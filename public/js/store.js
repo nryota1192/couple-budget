@@ -47,6 +47,10 @@ function createLocalStore() {
       data.expenses = data.expenses.filter((x) => x.id !== id);
       persist();
     },
+    async replaceAll(next) {
+      data = { settings: next.settings, expenses: next.expenses };
+      persist();
+    },
   };
 }
 

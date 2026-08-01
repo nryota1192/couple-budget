@@ -13,6 +13,8 @@ import {
   onSnapshot,
   setDoc,
   deleteDoc,
+  getDocs,
+  writeBatch,
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 
 const HH_KEY = 'coupleBudget.householdId';
@@ -105,6 +107,27 @@ export function createFirestoreStore(config) {
     },
     async deleteExpense(id) {
       await deleteDoc(doc(expensesCol(), id));
+    },
+    // バックアップからの復元。Firestoreは1バッチ内で同じ文書に2回書けないため、
+    // 「バックアップに無いものだけ削除」→「全件上書き」の順に分けて実行する。
+    async replaceAll(next) {
+      await setDoc(settingsRef(), next.settings);
+      const existing = await getDocs(expensesCol());
+      const keepIds = new Set(next.expenses.map((e) => e.id));
+      const stale = existing.docs.filter((d) => !keepIds.has(d.id)).map((d) => d.id);
+
+      const commitInChunks = async (items, apply) => {
+        for (let i = 0; i < items.length; i += 400) {
+          const batch = writeBatch(db);
+          for (const item of items.slice(i, i + 400)) apply(batch, item);
+          await batch.commit();
+        }
+      };
+      await commitInChunks(stale, (batch, id) => batch.delete(doc(expensesCol(), id)));
+      await commitInChunks(next.expenses, (batch, e) => {
+        const { id, ...body } = e;
+        batch.set(doc(expensesCol(), id), body);
+      });
     },
   };
 }

@@ -9,11 +9,15 @@ import {
   expenseMonth,
   setBudgetFrom,
   effectiveBudget,
+  validateBackup,
 } from './logic.js';
 
 const $app = document.getElementById('app');
 const $toast = document.getElementById('toast');
 const UNLOCK_KEY = 'coupleBudget.unlockHash';
+// 「誰が入力したか」は端末ごとに持つ(二人が同じ買い物を二重入力したときに気づけるように)
+const MEMBER_KEY = 'coupleBudget.memberName';
+const memberName = () => localStorage.getItem(MEMBER_KEY) ?? '';
 
 let store;
 const ui = {
@@ -267,6 +271,18 @@ function renderHome() {
   const month = homeMonth();
   const summary = computeMonthSummary(settings(), expenses(), month);
   const t = summary.totals;
+  const askName = !memberName() && !sessionStorage.getItem('coupleBudget.nameAsked');
+  const namePromptHtml = !askName ? '' : `
+    <div class="card">
+      <div class="field" style="margin-bottom:8px">
+        <label>この端末は誰が使いますか?(履歴に表示され、二重入力に気づけます)</label>
+        <input id="member-input" type="text" maxlength="10" placeholder="例: りょうた" />
+      </div>
+      <div class="btn-row">
+        <button class="btn primary" id="member-save">保存</button>
+        <button class="btn ghost" id="member-skip">あとで</button>
+      </div>
+    </div>`;
   const pending = pendingUtilities();
   const pendingHtml = pending.length === 0 ? '' : `
     <div class="card notice">
@@ -294,6 +310,7 @@ function renderHome() {
         <div>預かり金<b>${yen(settings().monthlyFund)}</b></div>
       </div>
     </div>
+    ${namePromptHtml}
     ${pendingHtml}
     ${groups.map(([label, type]) => {
       const rows = summary.rows.filter((r) => r.category.active && r.category.type === type);
@@ -302,6 +319,20 @@ function renderHome() {
         + rows.map((r) => catCard(r, month === currentMonth())).join('');
     }).join('')}
     ${navHtml('home')}`;
+
+  if (askName) {
+    document.getElementById('member-save').addEventListener('click', () => {
+      const name = document.getElementById('member-input').value.trim();
+      if (!name) { toast('名前を入力してください'); return; }
+      localStorage.setItem(MEMBER_KEY, name);
+      toast(`この端末を「${name}」として記録します`);
+      render();
+    });
+    document.getElementById('member-skip').addEventListener('click', () => {
+      sessionStorage.setItem('coupleBudget.nameAsked', '1');
+      render();
+    });
+  }
   bindNav();
 }
 
@@ -414,6 +445,8 @@ function renderAdd(editId) {
       categoryId: currentCat,
       amount,
       memo,
+      // 入力者は最初に記録した人のまま(編集しても書き換えない)
+      by: editing ? (editing.by ?? '') : memberName(),
       createdAt: editing ? editing.createdAt : Date.now(),
     };
     if (editing) await store.updateExpense(record);
@@ -466,14 +499,17 @@ function renderHistory() {
         ${Number(date.slice(5, 7))}/${Number(date.slice(8, 10))}(${'日月火水木金土'[new Date(date + 'T00:00').getDay()]})
         ${monthOfDate(date) !== month ? '<span class="badge muted">別月に支払</span>' : ''}
       </div>
-      ${rows.map((e) => `
+      ${rows.map((e) => {
+        const sub = [e.by, e.memo].filter(Boolean).map(esc).join(' · ');
+        return `
         <div class="exp-row" data-edit="${e.id}">
           <div class="info">
             <div class="cat">${esc(catName(e.categoryId))}</div>
-            ${e.memo ? `<div class="memo">${esc(e.memo)}</div>` : ''}
+            ${sub ? `<div class="memo">${sub}</div>` : ''}
           </div>
           <div class="amt num">${yen(e.amount)}</div>
-        </div>`).join('')}
+        </div>`;
+      }).join('')}
     `).join('')}
     ${navHtml('history')}`;
 
@@ -553,6 +589,15 @@ function renderSettings() {
       <div class="sum-note" id="sum-note"></div>
       <button class="btn primary" id="save-budgets">予算を保存(${monthLabel(month)}以降)</button>
     </div>
+    <div class="section-title">この端末の使用者</div>
+    <div class="card">
+      <div class="field">
+        <label>名前(入力した支出の履歴に表示されます)</label>
+        <input id="member-input2" type="text" maxlength="10" placeholder="例: りょうた" value="${esc(memberName())}" />
+      </div>
+      <button class="btn ghost" id="member-save2">名前を保存</button>
+      <p class="note" style="margin-bottom:0">端末ごとの設定です。相手のスマホでは相手の名前を設定してください。</p>
+    </div>
     <div class="section-title">PIN変更</div>
     <div class="card">
       <div class="field">
@@ -570,7 +615,10 @@ function renderSettings() {
           : '現在この端末のみに保存されています(ローカルモード)。二人のスマホで共有するにはFirebaseの設定が必要です(READMEの手順参照)。'}
       </p>
       ${store.mode === 'cloud' ? '<button class="btn ghost" id="copy-btn" style="margin-bottom:10px">共有URLをコピー</button>' : ''}
-      <button class="btn ghost" id="export-btn">バックアップをダウンロード(JSON)</button>
+      <button class="btn ghost" id="export-btn" style="margin-bottom:10px">バックアップをダウンロード(JSON)</button>
+      <input type="file" id="restore-file" accept="application/json,.json" style="display:none" />
+      <button class="btn ghost" id="restore-btn">バックアップから復元</button>
+      <p class="note" style="margin-bottom:0">復元すると現在の支出はすべて置き換わります(PINは今のまま変わりません)。</p>
     </div>
     ${navHtml('settings')}`;
 
@@ -610,6 +658,39 @@ function renderSettings() {
     localStorage.setItem(UNLOCK_KEY, s.pinHash);
     document.getElementById('new-pin').value = '';
     toast('PINを変更しました(相手の端末は再入力が必要です)');
+  });
+
+  document.getElementById('member-save2').addEventListener('click', () => {
+    const name = document.getElementById('member-input2').value.trim();
+    if (name) localStorage.setItem(MEMBER_KEY, name);
+    else localStorage.removeItem(MEMBER_KEY);
+    toast(name ? `「${name}」として記録します` : '名前を消しました');
+  });
+
+  const restoreFile = document.getElementById('restore-file');
+  document.getElementById('restore-btn').addEventListener('click', () => restoreFile.click());
+  restoreFile.addEventListener('change', async () => {
+    const file = restoreFile.files[0];
+    restoreFile.value = ''; // 同じファイルを選び直せるように
+    if (!file) return;
+    let parsed;
+    try {
+      parsed = JSON.parse(await file.text());
+    } catch {
+      toast('ファイルを読み取れませんでした');
+      return;
+    }
+    const result = validateBackup(parsed);
+    if (!result.ok) { toast(result.error); return; }
+    const ok = confirm(
+      `現在の支出${expenses().length}件を、バックアップの${result.data.expenses.length}件で置き換えます。\n`
+      + '元に戻せません。実行しますか?');
+    if (!ok) return;
+    const next = structuredClone(result.data);
+    next.settings.pinHash = settings().pinHash; // 復元でロックアウトしないよう今のPINを維持
+    await store.replaceAll(next);
+    toast(`復元しました(支出${next.expenses.length}件)`);
+    go('home');
   });
 
   const copyBtn = document.getElementById('copy-btn');

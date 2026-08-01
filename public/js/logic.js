@@ -14,6 +14,42 @@ export function monthOfDate(dateStr) {
   return dateStr.slice(0, 7);
 }
 
+// バックアップJSONの検証。壊れたファイルで家計簿を上書きしないための門番。
+// 戻り値: { ok: true, data } | { ok: false, error }
+export function validateBackup(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+    return { ok: false, error: 'バックアップファイルの形式ではありません' };
+  }
+  const { settings, expenses } = obj;
+  if (!settings || typeof settings !== 'object') {
+    return { ok: false, error: '設定情報が見つかりません' };
+  }
+  if (!/^\d{4}-\d{2}$/.test(settings.startMonth ?? '')) {
+    return { ok: false, error: '開始月が見つかりません' };
+  }
+  if (!Array.isArray(settings.categories) || settings.categories.length === 0) {
+    return { ok: false, error: '項目の情報が見つかりません' };
+  }
+  for (const c of settings.categories) {
+    if (!c?.id || !c?.name || !Array.isArray(c.budgets) || c.budgets.length === 0) {
+      return { ok: false, error: '項目の形式が壊れています' };
+    }
+  }
+  if (!Array.isArray(expenses)) {
+    return { ok: false, error: '支出の情報が見つかりません' };
+  }
+  const ids = new Set(settings.categories.map((c) => c.id));
+  for (const e of expenses) {
+    if (!e?.id || !/^\d{4}-\d{2}-\d{2}$/.test(e.date ?? '') || !Number.isFinite(e.amount)) {
+      return { ok: false, error: '支出データの形式が壊れています' };
+    }
+    if (!ids.has(e.categoryId)) {
+      return { ok: false, error: `支出の項目「${e.categoryId}」がバックアップ内に見つかりません` };
+    }
+  }
+  return { ok: true, data: { settings, expenses } };
+}
+
 // その支出がどの月の予算に計上されるか
 export function expenseMonth(expense) {
   return expense.month ?? monthOfDate(expense.date);

@@ -8,6 +8,7 @@ import {
   expenseMonth,
   setBudgetFrom,
   computeMonthSummary,
+  validateBackup,
 } from '../public/js/logic.js';
 import { defaultSettings, migrateSettings } from '../public/js/defaults.js';
 
@@ -159,6 +160,42 @@ test('移行: 旧名称は新名称に変わり、独自の名前は保持され
   assert.equal(insurance.name, 'こころさんの保険');
   // 2回目は変更なし(保存ループを防ぐ)
   assert.equal(migrateSettings(s), false);
+});
+
+test('復元: 正しいバックアップは受け入れられる', () => {
+  const backup = { settings: defaultSettings(), expenses: [exp('2026-08-10', 'food', 3000)] };
+  const r = validateBackup(backup);
+  assert.equal(r.ok, true);
+  assert.equal(r.data.expenses.length, 1);
+  // 支出0件でも正常(使い始めのバックアップ)
+  assert.equal(validateBackup({ settings: defaultSettings(), expenses: [] }).ok, true);
+});
+
+test('復元: 壊れたファイルは理由付きで拒否される', () => {
+  const cases = [
+    [null, 'バックアップファイルの形式ではありません'],
+    ['{}', 'バックアップファイルの形式ではありません'],
+    [{ expenses: [] }, '設定情報が見つかりません'],
+    [{ settings: { categories: [] }, expenses: [] }, '開始月が見つかりません'],
+    [{ settings: { startMonth: '2026-08', categories: [] }, expenses: [] }, '項目の情報が見つかりません'],
+    [{ settings: defaultSettings() }, '支出の情報が見つかりません'],
+  ];
+  for (const [input, error] of cases) {
+    const r = validateBackup(input);
+    assert.equal(r.ok, false);
+    assert.equal(r.error, error);
+  }
+});
+
+test('復元: 金額や日付が壊れた支出、未知の項目は拒否される', () => {
+  const s = defaultSettings();
+  const bad = (e) => validateBackup({ settings: s, expenses: [e] });
+  assert.equal(bad({ id: 'x', date: '2026-08-01', categoryId: 'food', amount: 'ABC' }).ok, false);
+  assert.equal(bad({ id: 'x', date: '8/1', categoryId: 'food', amount: 100 }).ok, false);
+  assert.equal(bad({ date: '2026-08-01', categoryId: 'food', amount: 100 }).ok, false); // id無し
+  const unknown = bad({ id: 'x', date: '2026-08-01', categoryId: 'ゴルフ', amount: 100 });
+  assert.equal(unknown.ok, false);
+  assert.match(unknown.error, /ゴルフ/);
 });
 
 test('合計: 残り合計は光熱費+変動費のみ、固定費・積立は含まない', () => {
