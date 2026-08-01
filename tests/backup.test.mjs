@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fromValue, fromFields } from '../scripts/backup.mjs';
+import { fromValue, fromFields, fetchBudget } from '../scripts/backup.mjs';
 import { validateBackup } from '../public/js/logic.js';
 
 // Firestore REST が返す型付きの値を、アプリが読める素のJSONに戻せること。
@@ -59,6 +59,56 @@ test('値の変換: 配列とネストしたマップ(項目マスタの形)', (
 test('空の配列は空配列になる(値が1つも無いとvaluesが省略される)', () => {
   assert.deepEqual(fromValue({ arrayValue: {} }), []);
   assert.deepEqual(fromValue({ mapValue: {} }), {});
+});
+
+// Firestore は1回のリクエストで返す件数に上限があるためページ送りが必要。
+// 支出が1件しかない今は実際にはループしないので、ここで多件数を再現して検証する。
+test('取得: 複数ページにまたがる支出をすべて集める', async () => {
+  const page = (n, from) => ({
+    documents: Array.from({ length: n }, (_, i) => ({
+      name: `projects/p/databases/(default)/documents/households/h/expenses/id${from + i}`,
+      fields: {
+        date: { stringValue: `2026-08-${String((from + i) % 28 + 1).padStart(2, '0')}` },
+        categoryId: { stringValue: 'food' },
+        amount: { integerValue: String(100 + from + i) },
+      },
+    })),
+  });
+  const calls = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    const body = String(url).includes('identitytoolkit')
+      ? { idToken: 'dummy-token' }
+      : String(url).includes('/expenses')
+        ? (String(url).includes('pageToken=NEXT')
+          ? page(50, 300)
+          : { ...page(300, 0), nextPageToken: 'NEXT' })
+        : { fields: { startMonth: { stringValue: '2026-08' }, categories: { arrayValue: { values: [] } } } };
+    return { ok: true, json: async () => body };
+  };
+  try {
+    const { expenses } = await fetchBudget('h');
+    assert.equal(expenses.length, 350, 'ページ送りの分が欠けている');
+    assert.equal(new Set(expenses.map((e) => e.id)).size, 350, 'IDが重複している');
+    // 日付順に並んでいる
+    const dates = expenses.map((e) => e.date);
+    assert.deepEqual(dates, [...dates].sort());
+    // 認証トークンを付けて呼んでいる
+    assert.ok(calls.some((u) => u.includes('identitytoolkit')), '匿名ログインしていない');
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('取得: APIがエラーを返したら例外にする(黙って空のバックアップを作らない)', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: false, status: 403, text: async () => 'Missing permissions' });
+  try {
+    await assert.rejects(() => fetchBudget('h'), /403/);
+  } finally {
+    globalThis.fetch = original;
+  }
 });
 
 test('変換結果がアプリの復元機能をそのまま通る', () => {

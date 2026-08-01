@@ -65,7 +65,7 @@ export function fromValue(v) {
 export const fromFields = (fields) =>
   Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, fromValue(v)]));
 
-async function fetchBudget(householdId) {
+export async function fetchBudget(householdId) {
   const { apiKey, projectId } = firebaseConfig;
   const { idToken } = await api(
     `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${apiKey}`,

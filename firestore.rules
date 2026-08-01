@@ -1,10 +1,13 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 世帯IDは推測困難なランダムIDで、URLを知る二人だけがアクセスする前提。
-    // 匿名認証済みユーザーのみ読み書き可。
+    // 世帯IDは推測困難なランダムID(32桁)で、URLを知る二人だけがアクセスする前提。
+    // get は許可するが list は禁止する。これがないと、匿名ログインした第三者が
+    // households を一覧して全世帯の中身を読めてしまう(2026-08-02 に塞いだ)。
     match /households/{householdId} {
-      allow read, write: if request.auth != null;
+      allow get, write: if request.auth != null;
+      allow list: if false;
+      // 支出は親の世帯IDを知らないと辿れないので read(get+list)を許可
       match /expenses/{expenseId} {
         allow read, write: if request.auth != null;
       }
