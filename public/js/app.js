@@ -112,13 +112,33 @@ function renderSetup() {
           <input id="pin2" type="password" inputmode="numeric" maxlength="6" autocomplete="off" />
         </div>
         <div class="pin-error" id="pin-error"></div>
-        <button class="btn primary" id="start-btn">この内容ではじめる</button>
+        <button class="btn primary" id="start-btn">新しくはじめる</button>
         <p class="note" style="margin-top:12px">
           開始月: 2026年8月 / 項目10個・予算合計100,000円で作成します(あとで設定から変更できます)。
           ${store.mode === 'local' ? '現在はこの端末のみに保存されます。二人での共有はFirebase設定後に有効になります。' : ''}
         </p>
       </div>
+      ${store.mode === 'cloud' ? `
+        <div class="card">
+          <div class="field">
+            <label>パートナーがもう作成している場合</label>
+            <input id="join-url" type="text" inputmode="url" placeholder="共有URLを貼り付け" />
+          </div>
+          <button class="btn ghost" id="join-btn">共有URLで参加する</button>
+          <p class="note" style="margin-top:10px">
+            こちらから参加しないと<b>別々の家計簿</b>になってしまいます。
+            共有URLはパートナーの設定画面からコピーできます。
+          </p>
+        </div>` : ''}
     </div>`;
+
+  const joinBtn = document.getElementById('join-btn');
+  if (joinBtn) joinBtn.addEventListener('click', () => {
+    const input = document.getElementById('join-url').value.trim();
+    const id = (input.match(/[?&]h=([0-9a-f]{16,})/i) ?? input.match(/^([0-9a-f]{16,})$/i))?.[1];
+    if (!id) { toast('共有URLが正しくありません'); return; }
+    location.href = `${location.pathname}?h=${id}`;
+  });
   document.getElementById('start-btn').addEventListener('click', async () => {
     const p1 = document.getElementById('pin1').value.trim();
     const p2 = document.getElementById('pin2').value.trim();
@@ -545,10 +565,11 @@ function renderSettings() {
     <div class="card">
       <p class="note" style="margin-top:0">
         ${store.mode === 'cloud'
-          ? 'クラウド共有モードで動作中。下のURLを二人でブックマークしてください。<br>' +
-            `<span style="word-break:break-all">${esc(store.shareUrl ? store.shareUrl() : '')}</span>`
+          ? 'この<b>共有URL</b>をパートナーに送ってください。二人が同じURLを開くことで家計簿が共有されます。<br>' +
+            `<span style="word-break:break-all" id="share-url">${esc(store.shareUrl ? store.shareUrl() : '')}</span>`
           : '現在この端末のみに保存されています(ローカルモード)。二人のスマホで共有するにはFirebaseの設定が必要です(READMEの手順参照)。'}
       </p>
+      ${store.mode === 'cloud' ? '<button class="btn ghost" id="copy-btn" style="margin-bottom:10px">共有URLをコピー</button>' : ''}
       <button class="btn ghost" id="export-btn">バックアップをダウンロード(JSON)</button>
     </div>
     ${navHtml('settings')}`;
@@ -589,6 +610,16 @@ function renderSettings() {
     localStorage.setItem(UNLOCK_KEY, s.pinHash);
     document.getElementById('new-pin').value = '';
     toast('PINを変更しました(相手の端末は再入力が必要です)');
+  });
+
+  const copyBtn = document.getElementById('copy-btn');
+  if (copyBtn) copyBtn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(store.shareUrl());
+      toast('共有URLをコピーしました');
+    } catch {
+      toast('コピーできませんでした。URLを長押しで選択してください');
+    }
   });
 
   document.getElementById('export-btn').addEventListener('click', () => {
