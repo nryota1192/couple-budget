@@ -1,0 +1,70 @@
+# ふたり家計簿(couple-budget)
+
+同棲費用の管理アプリ。こころさんから毎月預かる **10万円** を項目別予算として管理し、
+「各項目がいくら余ったか」「翌月にいくら繰り越せるか」がスマホで一目でわかる。
+
+## 仕様サマリ
+
+- 開始月: **2026年8月**。月は暦月で、月が変わると自動確定(締め操作なし)
+- 項目10個・予算合計100,000円(バッファなし)。予算は設定画面から変更可(変更月以降に適用)
+- 繰越は**項目ごと**: `使える額 = 月予算 + 前月繰越`、余りは翌月へ、使いすぎはマイナス繰越
+- 固定費(家賃・個人保険)は毎月自動で全額消化扱い(入力不要)
+- 光熱費(電気・ガス・水道)は請求が来たら実額を入力(未入力の月は「未入力」バッジ)
+- 家電積立は支出しない限り残高が積み上がり、家電購入時に支出を入力
+- アクセスは共有URL+共通PIN(4〜6桁)。PWA対応でホーム画面に追加可能
+
+## フォルダ構成
+
+```
+public/            アプリ本体(静的ファイルのみ・ビルド不要)
+  js/logic.js      繰越計算ロジック(純粋関数)
+  js/store.js      データ層(localStorage / Firestore 切替)
+  js/store-firebase.js  Firestore実装(共有モード)
+  js/firebase-config.js Firebase設定(null=ローカルモード)
+  js/defaults.js   初期項目マスタ
+  js/app.js        画面・ルーティング
+tests/             繰越ロジックの単体テスト
+firebase.json / firestore.rules  Firebaseデプロイ設定
+```
+
+## ローカルで動かす
+
+```
+python -m http.server 8734 --directory public
+```
+
+→ http://localhost:8734 を開く(この場合データは端末のlocalStorageのみ)。
+
+## テスト
+
+```
+node --test tests/logic.test.mjs
+```
+
+## 本番構成(セットアップ済み・2026-08-01)
+
+- **Firebase プロジェクト**: `couple-budget-a3812`(無料Sparkプラン、Googleアカウント nryota1192)
+  - Firestore: asia-northeast1(東京)、本番モード。ルールは「匿名認証済みのみ読み書き可」で公開済み(`firestore.rules` と同内容)
+  - Authentication: 匿名ログインのみ有効
+  - Webアプリ `couple-budget-web` の設定値を `public/js/firebase-config.js` に登録済み
+- **配信**: GitHub Pages(リポジトリ `nryota1192/couple-budget`、公開)
+  - `main` に push すると `.github/workflows/deploy.yml` が `public/` を自動デプロイ
+  - URL: https://nryota1192.github.io/couple-budget/
+
+### 使い始め方
+
+1. スマホで https://nryota1192.github.io/couple-budget/ を開き、初回設定でPINを決める
+2. 設定画面に出る **共有URL(?h=世帯ID付き)** をパートナーに送り、二人でブックマーク
+   (ホーム画面に追加すればアプリのように使える)
+3. パートナーは必ず共有URL(?h=付き)から開くこと(素のURLだと別世帯が作られてしまう)
+
+### firebase.json / firestore.rules について
+
+Firebase Hosting は使っていないが、ルールの原本管理とCLIデプロイへの切替用に残してある。
+
+### 注意
+
+- 世帯IDは推測困難なランダムIDで、URLとPINを知っている人だけが使える簡易的な保護。
+  URLは二人以外に共有しないこと
+- PINを変更すると相手の端末では再入力が求められる
+- 設定画面からJSONバックアップをダウンロードできる

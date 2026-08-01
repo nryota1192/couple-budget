@@ -1,0 +1,14 @@
+{
+  "name": "ふたり家計簿",
+  "short_name": "家計簿",
+  "description": "同棲費用(預かり金10万円)の項目別予算・繰越管理",
+  "lang": "ja",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f2f4f7",
+  "theme_color": "#3b5bdb",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
