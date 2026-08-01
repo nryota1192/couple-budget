@@ -43,11 +43,39 @@ python -m http.server 8741 --directory public
 本番のFirestoreデータは書き換わらない(`store.js` の `isLocalhost` 判定)。
 なお ES Modules はブラウザにキャッシュされるため、変更が反映されない時はポートを変えるか強制リロードする。
 
+## 月末の自動バックアップ
+
+`scripts/backup.mjs` が Firestore のデータを JSON に書き出す。依存パッケージなし
+(Firestore の REST API を fetch で叩くだけ)。出力はアプリの「バックアップから復元」が
+そのまま読める形式。
+
+```
+node scripts/backup.mjs --household <世帯ID> [--dest <保存先>]
+```
+
+- **世帯IDは家計簿を開く鍵そのもの。公開リポジトリには絶対に書かない**
+  (タスクスケジューラの引数として渡している)
+- 保存先は `R:\良太\家計簿`(未割当なら UNC `\\LS210DEAB\share\良太\家計簿` に自動フォールバック)
+- ファイル名は `ふたり家計簿-YYYY-MM-DD.json`。過去分は消さない(1ファイル数KB)
+- 一時ファイルに書いてから rename し、書き込み後に読み直して件数を検証する
+- 実行結果は保存先の `バックアップ実行ログ.txt` と `%LOCALAPPDATA%\couple-budget\backup.log` に追記
+
+### タスクスケジューラ登録内容(2026-08-01 設定済み)
+
+タスク名 **ふたり家計簿バックアップ** / 毎月**末日 13:00** / 実行アカウントはログオン中のユーザー。
+`StartWhenAvailable=true` にしてあるので、末日が休日でPCが落ちていても**次にPCを使ったときに実行**される。
+
+再登録が必要になったら `Export-ScheduledTask -TaskName 'ふたり家計簿バックアップ'` で
+現在の定義を確認できる(トリガーは `<DaysOfMonth><Day>Last</Day></DaysOfMonth>`)。
+
 ## テスト
 
 ```
-node --test tests/logic.test.mjs
+npm test
 ```
+
+Windows では `node --test tests/` (ディレクトリ指定)が動かないため、
+package.json でファイルを明示している。
 
 ## 本番構成(セットアップ済み・2026-08-01)
 

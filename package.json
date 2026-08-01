@@ -1,0 +1,9 @@
+{
+  "name": "couple-budget",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/logic.test.mjs tests/backup.test.mjs",
+    "backup": "node scripts/backup.mjs"
+  }
+}
