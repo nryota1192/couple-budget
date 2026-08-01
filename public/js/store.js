@@ -50,8 +50,11 @@ function createLocalStore() {
   };
 }
 
+// localhost での動作確認が本番データを書き換えないよう、開発時は常にローカル保存にする
+const isLocalhost = ['localhost', '127.0.0.1', ''].includes(location.hostname);
+
 export async function createStore() {
-  if (firebaseConfig) {
+  if (firebaseConfig && !isLocalhost) {
     const { createFirestoreStore } = await import('./store-firebase.js');
     return createFirestoreStore(firebaseConfig);
   }

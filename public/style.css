@@ -88,6 +88,13 @@ button { font: inherit; }
 .summary-sub div { font-size: 12px; color: var(--ink-2); }
 .summary-sub b { display: block; font-size: 16px; color: var(--ink); font-weight: 600; }
 
+/* お知らせ(未入力の請求など) */
+.card.notice {
+  border-color: var(--warn);
+  background: var(--warn-soft);
+}
+.card.notice .note { color: var(--ink-2); }
+
 /* セクション見出し */
 .section-title {
   font-size: 12px; font-weight: 600; color: var(--ink-3);
@@ -157,6 +164,7 @@ button { font: inherit; }
   width: 100%; padding: 11px 12px;
   border: 1px solid var(--line); border-radius: 10px;
   background: var(--surface); color: var(--ink); font: inherit;
+  font-size: 16px; /* iOSでフォーカス時に画面が拡大されるのを防ぐ */
 }
 .field input:focus, .field select:focus, .field textarea:focus {
   outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent;

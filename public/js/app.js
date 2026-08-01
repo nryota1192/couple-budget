@@ -1,11 +1,12 @@
 import { createStore } from './store.js';
-import { defaultSettings, TYPE_LABELS } from './defaults.js';
+import { defaultSettings, migrateSettings, TYPE_LABELS } from './defaults.js';
 import {
   computeMonthSummary,
   monthRange,
   nextMonth,
   prevMonth,
   monthOfDate,
+  expenseMonth,
   setBudgetFrom,
   effectiveBudget,
 } from './logic.js';
@@ -61,6 +62,10 @@ const homeMonth = () => {
   return m < settings().startMonth ? settings().startMonth : m;
 };
 
+// 計上月として選べる月(開始月〜今月)。新しい月が先頭
+const selectableMonths = () =>
+  monthRange(settings().startMonth, homeMonth()).reverse();
+
 // ---------- ルーティング ----------
 function route() {
   const h = location.hash.replace(/^#\/?/, '');
@@ -69,9 +74,16 @@ function route() {
 }
 const go = (path) => { location.hash = path; };
 
+let migrationRan = false;
+
 function render() {
   const data = store.getData();
   if (!data || !data.settings) return renderSetup();
+  if (!migrationRan) {
+    migrationRan = true;
+    const migrated = structuredClone(data.settings);
+    if (migrateSettings(migrated)) store.saveSettings(migrated);
+  }
   if (localStorage.getItem(UNLOCK_KEY) !== data.settings.pinHash) {
     return renderLock();
   }
@@ -182,12 +194,17 @@ function bindNav() {
 }
 
 // ---------- ホーム ----------
-function catCard(row) {
+function catCard(row, isCurrentMonth) {
   const { category: cat } = row;
   const badges = [];
   if (cat.type === 'fixed') badges.push('<span class="badge muted">自動計上</span>');
   if (cat.type === 'savings') badges.push('<span class="badge good">積立</span>');
-  if (cat.type === 'utility' && row.entryCount === 0) badges.push('<span class="badge warn">未入力</span>');
+  if (cat.type === 'utility' && row.entryCount === 0) {
+    // 当月分の請求は翌月に届くので「未入力」ではなく「請求待ち」
+    badges.push(isCurrentMonth
+      ? '<span class="badge muted">請求待ち</span>'
+      : '<span class="badge warn">未入力</span>');
+  }
   if (row.remaining < 0) badges.push('<span class="badge danger">超過</span>');
 
   const ratio = row.available > 0 ? Math.min(row.spent / row.available, 1) : (row.spent > 0 ? 1 : 0);
@@ -212,10 +229,31 @@ function catCard(row) {
     </div>`;
 }
 
+// 過去月で実額が未入力の光熱費(請求待ちのまま忘れられているもの)
+function pendingUtilities() {
+  const home = homeMonth();
+  const out = [];
+  for (let m = settings().startMonth; m < home; m = nextMonth(m)) {
+    for (const row of computeMonthSummary(settings(), expenses(), m).rows) {
+      if (row.category.active && row.category.type === 'utility' && row.entryCount === 0) {
+        out.push({ month: m, name: row.category.name });
+      }
+    }
+  }
+  return out;
+}
+
 function renderHome() {
   const month = homeMonth();
   const summary = computeMonthSummary(settings(), expenses(), month);
   const t = summary.totals;
+  const pending = pendingUtilities();
+  const pendingHtml = pending.length === 0 ? '' : `
+    <div class="card notice">
+      <div><b>未入力の請求が${pending.length}件</b></div>
+      <div class="note">${pending.slice(0, 4).map((p) => `${monthLabel(p.month)}分の${esc(p.name)}`).join('、')}${pending.length > 4 ? ` ほか${pending.length - 4}件` : ''}</div>
+      <button class="btn ghost" data-nav="add" style="margin-top:10px">請求を入力する</button>
+    </div>`;
   const groups = [
     ['変動費', 'variable'],
     ['光熱費', 'utility'],
@@ -236,41 +274,61 @@ function renderHome() {
         <div>預かり金<b>${yen(settings().monthlyFund)}</b></div>
       </div>
     </div>
+    ${pendingHtml}
     ${groups.map(([label, type]) => {
       const rows = summary.rows.filter((r) => r.category.active && r.category.type === type);
       if (!rows.length) return '';
-      return `<div class="section-title">${label}</div>${rows.map(catCard).join('')}`;
+      return `<div class="section-title">${label}</div>`
+        + rows.map((r) => catCard(r, month === currentMonth())).join('');
     }).join('')}
     ${navHtml('home')}`;
   bindNav();
 }
 
 // ---------- 支出入力 / 編集 ----------
+// 計上月の初期値。光熱費は請求が翌月に届くので前月を既定にする
+function defaultMonthFor(catId) {
+  const cat = settings().categories.find((c) => c.id === catId);
+  const home = homeMonth();
+  if (cat?.type === 'utility') {
+    const prev = prevMonth(home);
+    if (prev >= settings().startMonth) return prev;
+  }
+  return home;
+}
+
 function renderAdd(editId) {
   const editing = editId ? expenses().find((e) => e.id === editId) : null;
   if (editId && !editing) { go('history'); return; }
   const cats = [...settings().categories]
     .filter((c) => c.active && c.type !== 'fixed')
     .sort((a, b) => a.sortOrder - b.sortOrder);
-  const selected = editing ? editing.categoryId : ui.addCat;
-  const month = homeMonth();
-  const summary = computeMonthSummary(settings(), expenses(), month);
-  const remainingOf = (id) => summary.rows.find((r) => r.category.id === id)?.remaining ?? 0;
+  const months = selectableMonths();
+
+  let currentCat = editing ? editing.categoryId : ui.addCat;
+  let currentMonth = editing ? expenseMonth(editing) : defaultMonthFor(currentCat);
+  let monthTouched = Boolean(editing);
 
   $app.innerHTML = `
     <header class="app-header">
       <h1>${editing ? '支出を編集' : '支出を入力'}</h1>
-      <span class="month">${monthLabel(month)}</span>
     </header>
     <div class="card">
       <div class="field">
         <label>項目</label>
         <div class="chips">
           ${cats.map((c) => `
-            <button class="chip ${selected === c.id ? 'selected' : ''}" data-cat="${c.id}">
-              ${esc(c.name)}<small class="num">残${(remainingOf(c.id)).toLocaleString('ja-JP')}</small>
+            <button class="chip ${currentCat === c.id ? 'selected' : ''}" data-cat="${c.id}">
+              ${esc(c.name)}<small class="num"></small>
             </button>`).join('')}
         </div>
+      </div>
+      <div class="field">
+        <label>計上月(どの月の予算から出すか)</label>
+        <select id="month">
+          ${months.map((m) => `<option value="${m}">${monthLabel(m)}分</option>`).join('')}
+        </select>
+        <p class="note" id="month-hint" style="margin:6px 0 0"></p>
       </div>
       <div class="field">
         <label>金額(円)</label>
@@ -278,7 +336,7 @@ function renderAdd(editId) {
           placeholder="0" value="${editing ? editing.amount : ''}" />
       </div>
       <div class="field">
-        <label>日付</label>
+        <label>日付(支払日・購入日)</label>
         <input id="date" type="date" value="${editing ? editing.date : todayStr()}" />
       </div>
       <div class="field">
@@ -290,14 +348,37 @@ function renderAdd(editId) {
     </div>
     ${navHtml('add')}`;
 
-  let currentCat = selected;
+  const $month = document.getElementById('month');
+  const $hint = document.getElementById('month-hint');
+
+  const refresh = () => {
+    $month.value = currentMonth;
+    const summary = computeMonthSummary(settings(), expenses(), currentMonth);
+    $app.querySelectorAll('[data-cat]').forEach((el) => {
+      el.classList.toggle('selected', el.dataset.cat === currentCat);
+      const row = summary.rows.find((r) => r.category.id === el.dataset.cat);
+      el.querySelector('small').textContent = `残${(row?.remaining ?? 0).toLocaleString('ja-JP')}`;
+    });
+    const cat = settings().categories.find((c) => c.id === currentCat);
+    $hint.textContent = cat?.type === 'utility'
+      ? '請求は翌月に届くので、使った月を選んでください(既定は前月)。'
+      : `${monthLabel(currentMonth)}の予算から差し引かれます。`;
+  };
+
   $app.querySelectorAll('[data-cat]').forEach((el) =>
     el.addEventListener('click', () => {
       currentCat = el.dataset.cat;
       ui.addCat = currentCat;
-      $app.querySelectorAll('[data-cat]').forEach((c) =>
-        c.classList.toggle('selected', c.dataset.cat === currentCat));
+      if (!monthTouched) currentMonth = defaultMonthFor(currentCat);
+      refresh();
     }));
+
+  $month.addEventListener('change', () => {
+    currentMonth = $month.value;
+    monthTouched = true;
+    refresh();
+  });
+  refresh();
 
   document.getElementById('save-btn').addEventListener('click', async () => {
     const amount = Math.floor(Number(document.getElementById('amount').value));
@@ -306,10 +387,10 @@ function renderAdd(editId) {
     if (!currentCat) { toast('項目を選んでください'); return; }
     if (!Number.isFinite(amount) || amount <= 0) { toast('金額を入力してください'); return; }
     if (!date) { toast('日付を入力してください'); return; }
-    if (monthOfDate(date) < settings().startMonth) { toast(`開始月(${monthLabel(settings().startMonth)})より前は記録できません`); return; }
     const record = {
       id: editing ? editing.id : crypto.randomUUID(),
       date,
+      month: currentMonth,
       categoryId: currentCat,
       amount,
       memo,
@@ -318,8 +399,11 @@ function renderAdd(editId) {
     if (editing) await store.updateExpense(record);
     else await store.addExpense(record);
     ui.addCat = null;
-    toast(editing ? '更新しました' : '記録しました');
-    go(editing ? 'history' : 'home');
+    ui.historyMonth = record.month;
+    ui.reportMonth = record.month;
+    toast(editing ? '更新しました' : `${monthLabel(record.month)}分に記録しました`);
+    // 今月分ならホームで残額を確認、過去月分はその月の履歴へ
+    go(!editing && record.month === homeMonth() ? 'home' : 'history');
   });
 
   const del = document.getElementById('delete-btn');
@@ -338,7 +422,7 @@ function renderHistory() {
   ui.historyMonth = month;
   const catName = (id) => settings().categories.find((c) => c.id === id)?.name ?? '(削除済み項目)';
   const list = expenses()
-    .filter((e) => monthOfDate(e.date) === month)
+    .filter((e) => expenseMonth(e) === month)
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.createdAt - a.createdAt));
   const total = list.reduce((s, e) => s + e.amount, 0);
   const byDate = new Map();
@@ -358,7 +442,10 @@ function renderHistory() {
     </div>
     ${list.length === 0 ? '<div class="empty">この月の入力はまだありません</div>' : ''}
     ${[...byDate.entries()].map(([date, rows]) => `
-      <div class="date-head">${Number(date.slice(8, 10))}日(${'日月火水木金土'[new Date(date + 'T00:00').getDay()]})</div>
+      <div class="date-head">
+        ${Number(date.slice(5, 7))}/${Number(date.slice(8, 10))}(${'日月火水木金土'[new Date(date + 'T00:00').getDay()]})
+        ${monthOfDate(date) !== month ? '<span class="badge muted">別月に支払</span>' : ''}
+      </div>
       ${rows.map((e) => `
         <div class="exp-row" data-edit="${e.id}">
           <div class="info">

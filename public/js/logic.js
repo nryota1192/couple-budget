@@ -6,10 +6,17 @@
 //     active: bool, sortOrder: number,
 //     budgets: [{ from: "YYYY-MM", amount: number }]  // from昇順。fromの月以降に適用
 //   }
-// 支出(expense): { id, date: "YYYY-MM-DD", categoryId, amount, memo, createdAt }
+// 支出(expense): { id, date: "YYYY-MM-DD", month?: "YYYY-MM", categoryId, amount, memo, createdAt }
+//   month は「どの月の予算から出すか」(計上月)。省略時は date の月。
+//   例: 9月に届いた8月分の電気代 → date="2026-09-10", month="2026-08"
 
 export function monthOfDate(dateStr) {
   return dateStr.slice(0, 7);
+}
+
+// その支出がどの月の予算に計上されるか
+export function expenseMonth(expense) {
+  return expense.month ?? monthOfDate(expense.date);
 }
 
 export function nextMonth(month) {
@@ -76,7 +83,7 @@ export function computeMonthSummary(settings, expenses, month) {
   const spentMap = new Map();
   const countMap = new Map();
   for (const e of expenses) {
-    const key = `${monthOfDate(e.date)}|${e.categoryId}`;
+    const key = `${expenseMonth(e)}|${e.categoryId}`;
     spentMap.set(key, (spentMap.get(key) ?? 0) + e.amount);
     countMap.set(key, (countMap.get(key) ?? 0) + 1);
   }

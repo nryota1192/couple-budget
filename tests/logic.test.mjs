@@ -5,14 +5,17 @@ import {
   prevMonth,
   monthRange,
   effectiveBudget,
+  expenseMonth,
   setBudgetFrom,
   computeMonthSummary,
 } from '../public/js/logic.js';
-import { defaultSettings } from '../public/js/defaults.js';
+import { defaultSettings, migrateSettings } from '../public/js/defaults.js';
 
-const exp = (date, categoryId, amount) => ({
+// month を渡すと計上月を明示指定(省略時は date の月に計上)
+const exp = (date, categoryId, amount, month) => ({
   id: `${date}-${categoryId}-${amount}`,
   date,
+  ...(month ? { month } : {}),
   categoryId,
   amount,
   memo: '',
@@ -99,6 +102,63 @@ test('予算変更は指定月以降のみ適用され、過去の繰越計算�
   const oct = rowOf(computeMonthSummary(s, expenses, '2026-10'), 'food');
   // 8月残り2,000 + 9月まるごと28,000 + 10月予算30,000
   assert.equal(oct.available, 2000 + 28000 + 30000);
+});
+
+test('計上月: 9月に払った8月分の電気代は8月の予算から引かれる', () => {
+  const s = defaultSettings();
+  const bill = exp('2026-09-10', 'electricity', 4200, '2026-08');
+  assert.equal(expenseMonth(bill), '2026-08');
+
+  const aug = rowOf(computeMonthSummary(s, [bill], '2026-08'), 'electricity');
+  assert.equal(aug.spent, 4200);
+  assert.equal(aug.remaining, 800);
+  assert.equal(aug.entryCount, 1);
+
+  // 9月には計上されず、8月の余り800円が繰り越される
+  const sep = rowOf(computeMonthSummary(s, [bill], '2026-09'), 'electricity');
+  assert.equal(sep.spent, 0);
+  assert.equal(sep.carryIn, 800);
+  assert.equal(sep.available, 5800);
+});
+
+test('計上月: month がなければ date の月に計上される(既存データ互換)', () => {
+  const s = defaultSettings();
+  const old = exp('2026-08-15', 'food', 3000);
+  assert.equal(expenseMonth(old), '2026-08');
+  assert.equal(rowOf(computeMonthSummary(s, [old], '2026-08'), 'food').spent, 3000);
+});
+
+test('計上月: 数ヶ月前に遡って入力できる', () => {
+  const s = defaultSettings();
+  const bill = exp('2026-11-05', 'water', 6000, '2026-08'); // 3ヶ月前の水道代(予算3,000)
+  const aug = rowOf(computeMonthSummary(s, [bill], '2026-08'), 'water');
+  assert.equal(aug.spent, 6000);
+  assert.equal(aug.remaining, -3000);
+  // 遡って入力した超過分は、それ以降の月の使える額に正しく反映される
+  assert.equal(rowOf(computeMonthSummary(s, [bill], '2026-09'), 'water').available, 0);
+  assert.equal(rowOf(computeMonthSummary(s, [bill], '2026-10'), 'water').available, 3000);
+});
+
+test('項目名: 短い名称になっている', () => {
+  const names = defaultSettings().categories.map((c) => c.name);
+  assert.deepEqual(names, [
+    '家賃', '電気代', 'ガス代', '水道代', '保険',
+    '食費', '教育費', '家電積立', '日用品', '共通費',
+  ]);
+});
+
+test('移行: 旧名称は新名称に変わり、独自の名前は保持される', () => {
+  const s = defaultSettings();
+  const food = s.categories.find((c) => c.id === 'food');
+  const insurance = s.categories.find((c) => c.id === 'insurance');
+  food.name = '食費(自炊中心)';
+  insurance.name = 'こころさんの保険'; // 独自に付けた名前
+
+  assert.equal(migrateSettings(s), true);
+  assert.equal(food.name, '食費');
+  assert.equal(insurance.name, 'こころさんの保険');
+  // 2回目は変更なし(保存ループを防ぐ)
+  assert.equal(migrateSettings(s), false);
 });
 
 test('合計: 残り合計は光熱費+変動費のみ、固定費・積立は含まない', () => {
