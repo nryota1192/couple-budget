@@ -1,4 +1,6 @@
-// 初期設定(2026-08 開始・合計100,000円)
+// 初期設定(2026-08 開始)
+// 予算は「世帯の総額」ベース(合計200,000円)。折半で一人100,000円で、
+// こころさんから預かる monthlyFund(100,000円)がその半分にあたる。
 export const START_MONTH = '2026-08';
 
 const cat = (id, name, type, sortOrder, amount) => ({
@@ -15,16 +17,16 @@ export function defaultSettings() {
     startMonth: START_MONTH,
     monthlyFund: 100000, // こころさんから預かる金額
     categories: [
-      cat('rent', '家賃', 'fixed', 1, 42000),
-      cat('electricity', '電気代', 'utility', 2, 5000),
-      cat('gas', 'ガス代', 'utility', 3, 2000),
-      cat('water', '水道代', 'utility', 4, 3000),
-      cat('insurance', '保険', 'fixed', 5, 2000),
-      cat('food', '食費', 'variable', 6, 28000),
-      cat('education', '教育費', 'variable', 7, 5000),
-      cat('appliance', '家電積立', 'savings', 8, 5000),
-      cat('household', '日用品', 'variable', 9, 3000),
-      cat('shared', '共通費', 'variable', 10, 5000),
+      cat('rent', '家賃', 'fixed', 1, 84000),
+      cat('electricity', '電気代', 'utility', 2, 10000),
+      cat('gas', 'ガス代', 'utility', 3, 4000),
+      cat('water', '水道代', 'utility', 4, 6000),
+      cat('insurance', '保険', 'fixed', 5, 4000),
+      cat('food', '食費', 'variable', 6, 56000),
+      cat('education', '教育費', 'variable', 7, 10000),
+      cat('appliance', '家電積立', 'savings', 8, 10000),
+      cat('household', '日用品', 'variable', 9, 6000),
+      cat('shared', '共通費', 'variable', 10, 10000),
     ],
   };
 }

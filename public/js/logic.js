@@ -100,6 +100,15 @@ export function setBudgetFrom(category, month, amount) {
   return budgets.filter((b) => b.from <= month);
 }
 
+// 指定月だけ予算を変更する(翌月からは、これまでの予算に自動で戻る)。
+// 例: 共通費10,000円を8月だけ20,000円に → [{8月:20,000}, {9月:10,000}]
+export function setBudgetForMonth(category, month, amount) {
+  const restore = effectiveBudget(category, nextMonth(month)); // 変更前に「戻し先」を確定させる
+  const budgets = setBudgetFrom(category, month, amount);
+  budgets.push({ from: nextMonth(month), amount: restore });
+  return budgets;
+}
+
 // 指定月のサマリを計算する。
 // 戻り値: { month, rows, totals }
 //   rows: [{ category, budget, carryIn, available, spent, remaining, entryCount }]

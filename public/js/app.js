@@ -8,6 +8,7 @@ import {
   monthOfDate,
   expenseMonth,
   setBudgetFrom,
+  setBudgetForMonth,
   effectiveBudget,
   validateBackup,
 } from './logic.js';
@@ -126,7 +127,7 @@ function renderSetup() {
   $app.innerHTML = `
     <div class="gate">
       <h1>ふたり家計簿</h1>
-      <p>預かり金10万円の項目別予算・繰越を管理します</p>
+      <p>同棲費用の項目別予算・繰越を管理します</p>
       ${store.mode === 'cloud' ? `
         <div class="card notice" style="text-align:left">
           <div><b>すでに家計簿がある場合はこちら</b></div>
@@ -156,7 +157,7 @@ function renderSetup() {
         <div class="pin-error" id="pin-error"></div>
         <button class="btn ghost" id="start-btn">新しく作る</button>
         <p class="note" style="margin-top:12px">
-          開始月: 2026年8月 / 項目10個・予算合計100,000円で作成します(あとで設定から変更できます)。
+          開始月: 2026年8月 / 項目10個・予算合計200,000円(世帯総額)で作成します(あとで設定から変更できます)。
           ${store.mode === 'local' ? '現在はこの端末のみに保存されます。二人での共有はFirebase設定後に有効になります。' : ''}
         </p>
       </div>
@@ -339,7 +340,7 @@ function renderHome() {
       <div class="summary-sub num">
         <div>家電積立残高<b>${yen(t.savingsBalance)}</b></div>
         <div>今月の支出<b>${yen(t.spent)}</b></div>
-        <div>預かり金<b>${yen(settings().monthlyFund)}</b></div>
+        <div>今月の予算<b>${yen(t.budget)}</b></div>
       </div>
     </div>
     ${namePromptHtml}
@@ -642,7 +643,25 @@ function renderSettings() {
             data-budget="${c.id}" value="${effectiveBudget(c, month)}" />
         </div>`).join('')}
       <div class="sum-note" id="sum-note"></div>
-      <button class="btn primary" id="save-budgets">予算を保存(${monthLabel(month)}以降)</button>
+      <label class="confirm-row">
+        <input type="radio" name="budget-scope" value="forever" checked />
+        <span>${monthLabel(month)}以降ずっと変更する</span>
+      </label>
+      <label class="confirm-row">
+        <input type="radio" name="budget-scope" value="once" />
+        <span>${monthLabel(month)}だけ変更する(来月は今の予算に自動で戻る)</span>
+      </label>
+      <button class="btn primary" id="save-budgets">予算を保存</button>
+    </div>
+    <div class="section-title">預かり金</div>
+    <div class="card">
+      <div class="field">
+        <label>こころさんから預かる金額(月)</label>
+        <input id="fund-input" class="num" type="number" inputmode="numeric" min="0" step="1000"
+          value="${settings().monthlyFund ?? 0}" style="text-align:right" />
+      </div>
+      <button class="btn ghost" id="save-fund">預かり金を保存</button>
+      <p class="note" style="margin-bottom:0">メイン画面には表示されません。予算(折半で一人あたり)との比較の目安に使います。</p>
     </div>
     <div class="section-title">この端末の使用者</div>
     <div class="card">
@@ -681,27 +700,39 @@ function renderSettings() {
   const note = document.getElementById('sum-note');
   const updateSum = () => {
     const total = inputs.reduce((s, i) => s + (Math.floor(Number(i.value)) || 0), 0);
-    const fund = settings().monthlyFund;
-    const diff = fund - total;
-    note.classList.toggle('bad', diff !== 0);
-    note.innerHTML = `予算合計 <b class="num">${yen(total)}</b> / 預かり金 ${yen(fund)}`
-      + (diff === 0 ? '(ぴったり)' : diff > 0 ? `(${yen(diff)} 余ります=バッファ)` : `(${yen(-diff)} 超過しています)`);
+    const half = Math.round(total / 2);
+    const fund = settings().monthlyFund ?? 0;
+    note.classList.toggle('bad', half !== fund);
+    note.innerHTML = `予算合計 <b class="num">${yen(total)}</b>(折半で一人 ${yen(half)})`
+      + (half === fund ? ' = 預かり金と同額' : `<br>預かり金 ${yen(fund)} との差 ${yen(half - fund)}`);
   };
   inputs.forEach((i) => i.addEventListener('input', updateSum));
   updateSum();
 
   document.getElementById('save-budgets').addEventListener('click', async () => {
+    const scope = $app.querySelector('input[name="budget-scope"]:checked').value;
     const s = structuredClone(settings());
     for (const input of inputs) {
       const cat = s.categories.find((c) => c.id === input.dataset.budget);
       const val = Math.floor(Number(input.value));
       if (!Number.isFinite(val) || val < 0) { toast(`${cat.name}の金額が不正です`); return; }
       if (effectiveBudget(cat, month) !== val) {
-        cat.budgets = setBudgetFrom(cat, month, val);
+        cat.budgets = scope === 'once'
+          ? setBudgetForMonth(cat, month, val)
+          : setBudgetFrom(cat, month, val);
       }
     }
     await store.saveSettings(s);
-    toast('予算を保存しました');
+    toast(scope === 'once' ? `予算を保存しました(${monthLabel(month)}のみ)` : '予算を保存しました');
+  });
+
+  document.getElementById('save-fund').addEventListener('click', async () => {
+    const val = Math.floor(Number(document.getElementById('fund-input').value));
+    if (!Number.isFinite(val) || val < 0) { toast('預かり金の金額が不正です'); return; }
+    const s = structuredClone(settings());
+    s.monthlyFund = val;
+    await store.saveSettings(s);
+    toast('預かり金を保存しました');
   });
 
   document.getElementById('save-pin').addEventListener('click', async () => {
