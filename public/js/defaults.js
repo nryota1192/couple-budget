@@ -51,6 +51,16 @@ export function migrateSettings(settings) {
   return changed;
 }
 
+// 項目を見分けるためのアイコン。文字だけだと押し間違えるため
+const ICONS = {
+  rent: '🏠', electricity: '⚡', gas: '🔥', water: '💧', insurance: '🛡️',
+  food: '🍚', education: '📚', appliance: '🔌', household: '🧴', shared: '👫',
+};
+const TYPE_ICONS = { fixed: '🏠', utility: '💡', variable: '🛒', savings: '💰' };
+
+// 追加された項目でもアイコンが出るよう、種別で代替する
+export const iconFor = (category) => ICONS[category.id] ?? TYPE_ICONS[category.type] ?? '•';
+
 export const TYPE_LABELS = {
   fixed: '固定費',
   utility: '光熱費',

@@ -1,5 +1,5 @@
 import { createStore } from './store.js';
-import { defaultSettings, migrateSettings, TYPE_LABELS } from './defaults.js';
+import { defaultSettings, migrateSettings, iconFor, TYPE_LABELS } from './defaults.js';
 import {
   computeMonthSummary,
   monthRange,
@@ -241,6 +241,7 @@ function catCard(row, isCurrentMonth) {
   return `
     <div class="card cat-card">
       <div class="cat-top">
+        <span class="cat-icon">${iconFor(cat)}</span>
         <span class="cat-name">${esc(cat.name)}</span>
         ${badges.join('')}
         <span class="cat-remaining num ${row.remaining < 0 ? 'negative' : ''}">${remainingLabel}${yen(row.remaining)}</span>
@@ -367,12 +368,26 @@ function renderAdd(editId) {
     <div class="card">
       <div class="field">
         <label>項目</label>
-        <div class="chips">
-          ${cats.map((c) => `
-            <button class="chip ${currentCat === c.id ? 'selected' : ''}" data-cat="${c.id}">
-              ${esc(c.name)}<small class="num"></small>
-            </button>`).join('')}
-        </div>
+        ${[
+          ['ふだんの買い物', 'variable'],
+          ['毎月の請求', 'utility'],
+          ['積立', 'savings'],
+        ].map(([groupLabel, type]) => {
+          const group = cats.filter((c) => c.type === type);
+          if (!group.length) return '';
+          return `
+            <div class="chip-group">
+              <div class="chip-group-label">${groupLabel}</div>
+              <div class="chips">
+                ${group.map((c) => `
+                  <button class="chip ${currentCat === c.id ? 'selected' : ''}" data-cat="${c.id}">
+                    <span class="chip-icon">${iconFor(c)}</span>
+                    <span class="chip-name">${esc(c.name)}</span>
+                    <small class="num"></small>
+                  </button>`).join('')}
+              </div>
+            </div>`;
+        }).join('')}
       </div>
       <div class="field">
         <label>計上月(どの月の予算から出すか)</label>
@@ -394,7 +409,7 @@ function renderAdd(editId) {
         <label>メモ(任意)</label>
         <input id="memo" type="text" maxlength="60" placeholder="例: スーパーで買い出し" value="${editing ? esc(editing.memo) : ''}" />
       </div>
-      <button class="btn primary" id="save-btn">${editing ? '更新する' : '記録する'}</button>
+      <button class="btn primary" id="save-btn"></button>
       ${editing ? '<button class="btn danger-ghost" id="delete-btn">この支出を削除</button>' : ''}
     </div>
     ${navHtml('add')}`;
@@ -414,6 +429,12 @@ function renderAdd(editId) {
     $hint.textContent = cat?.type === 'utility'
       ? '請求は翌月に届くので、使った月を選んでください(既定は前月)。'
       : `${monthLabel(currentMonth)}の予算から差し引かれます。`;
+    // どの項目に付けるのかをボタンにも出して、押し間違いに気づけるようにする
+    const $save = document.getElementById('save-btn');
+    $save.textContent = cat
+      ? `${iconFor(cat)} ${cat.name}に${editing ? '更新' : '記録'}する`
+      : '項目を選んでください';
+    $save.disabled = !cat;
   };
 
   $app.querySelectorAll('[data-cat]').forEach((el) =>
@@ -473,7 +494,9 @@ function renderAdd(editId) {
 function renderHistory() {
   const month = ui.historyMonth ?? homeMonth();
   ui.historyMonth = month;
-  const catName = (id) => settings().categories.find((c) => c.id === id)?.name ?? '(削除済み項目)';
+  const catOf = (id) => settings().categories.find((c) => c.id === id);
+  const catName = (id) => catOf(id)?.name ?? '(削除済み項目)';
+  const catIcon = (id) => { const c = catOf(id); return c ? iconFor(c) : '•'; };
   const list = expenses()
     .filter((e) => expenseMonth(e) === month)
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.createdAt - a.createdAt));
@@ -503,6 +526,7 @@ function renderHistory() {
         const sub = [e.by, e.memo].filter(Boolean).map(esc).join(' · ');
         return `
         <div class="exp-row" data-edit="${e.id}">
+          <span class="exp-icon">${catIcon(e.categoryId)}</span>
           <div class="info">
             <div class="cat">${esc(catName(e.categoryId))}</div>
             ${sub ? `<div class="memo">${sub}</div>` : ''}

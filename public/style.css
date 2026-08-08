@@ -172,14 +172,30 @@ button { font: inherit; }
 input.amount { font-size: 24px; font-weight: 700; text-align: right; }
 
 /* 項目選択チップ */
+.chip-group { margin-bottom: 12px; }
+.chip-group:last-child { margin-bottom: 0; }
+.chip-group-label {
+  font-size: 11px; color: var(--ink-3); font-weight: 600;
+  margin: 0 2px 6px; letter-spacing: 0.04em;
+}
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip {
   appearance: none; border: 1px solid var(--line); background: var(--surface);
-  color: var(--ink); border-radius: 999px; padding: 7px 14px; font-size: 13px;
-  cursor: pointer;
+  color: var(--ink); border-radius: 14px; padding: 9px 13px; font-size: 14px;
+  cursor: pointer; min-height: 46px; /* 指で押しやすい高さ */
+  display: inline-flex; align-items: center; gap: 6px;
 }
-.chip.selected { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
-.chip small { color: inherit; opacity: 0.75; margin-left: 4px; }
+.chip .chip-icon { font-size: 18px; line-height: 1; }
+.chip .chip-name { font-weight: 600; }
+.chip.selected {
+  background: var(--accent); border-color: var(--accent); color: var(--accent-ink);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.chip small { color: inherit; opacity: 0.75; font-weight: 400; }
+
+/* 項目アイコン */
+.cat-icon { font-size: 17px; line-height: 1; }
+.exp-icon { font-size: 19px; line-height: 1; width: 22px; text-align: center; }
 
 /* ボタン */
 .btn {
