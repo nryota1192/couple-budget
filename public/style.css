@@ -254,6 +254,13 @@ table.report tfoot td { font-weight: 700; border-top: 1px solid var(--line); }
 .sum-note { font-size: 13px; margin: 10px 2px; color: var(--ink-2); }
 .sum-note.bad { color: var(--warn); font-weight: 600; }
 
+/* 確認チェック(うっかり新規作成の防止) */
+.confirm-row {
+  display: flex; align-items: flex-start; gap: 8px;
+  font-size: 13px; color: var(--ink-2); margin: 4px 0 12px; cursor: pointer;
+}
+.confirm-row input { width: 18px; height: 18px; margin-top: 1px; flex: none; }
+
 /* PIN / 初期設定 */
 .gate { padding-top: 70px; text-align: center; }
 .gate h1 { font-size: 22px; margin-bottom: 4px; }

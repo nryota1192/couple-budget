@@ -23,6 +23,7 @@ function createLocalStore() {
       data = raw ? JSON.parse(raw) : null;
     },
     getData: () => data,
+    getError: () => null,
     subscribe(fn) {
       listeners.add(fn);
       return () => listeners.delete(fn);

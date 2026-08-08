@@ -44,6 +44,7 @@ export function createFirestoreStore(config) {
   let settings = null;
   let expenses = [];
   let ready = false;
+  let loadError = null;
   const listeners = new Set();
   const emit = () => listeners.forEach((fn) => fn());
 
@@ -53,13 +54,23 @@ export function createFirestoreStore(config) {
   function watch() {
     putIdInUrl(householdId);
     localStorage.setItem(HH_KEY, householdId);
+    // エラーを握りつぶすと「支出0円の家計簿」に見えてしまい、
+    // 読めていないのか本当に0円なのか区別がつかなくなる
     onSnapshot(settingsRef(), (snap) => {
       settings = snap.exists() ? snap.data() : null;
+      ready = true;
+      loadError = null;
+      emit();
+    }, (err) => {
+      loadError = `設定の読み込みに失敗しました (${err.code})`;
       ready = true;
       emit();
     });
     onSnapshot(expensesCol(), (snap) => {
       expenses = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      emit();
+    }, (err) => {
+      loadError = `支出の読み込みに失敗しました (${err.code})`;
       emit();
     });
   }
@@ -85,6 +96,7 @@ export function createFirestoreStore(config) {
       }
     },
     getData: () => (settings ? { settings, expenses } : null),
+    getError: () => loadError,
     subscribe(fn) {
       listeners.add(fn);
       return () => listeners.delete(fn);

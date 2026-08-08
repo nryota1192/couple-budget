@@ -81,6 +81,8 @@ const go = (path) => { location.hash = path; };
 let migrationRan = false;
 
 function render() {
+  const error = store.getError();
+  if (error) return renderError(error);
   const data = store.getData();
   if (!data || !data.settings) return renderSetup();
   if (!migrationRan) {
@@ -100,12 +102,43 @@ function render() {
   else renderHome();
 }
 
+// ---------- 読み込み失敗 ----------
+// 黙って空の家計簿(全項目0円)を出すと、壊れているのか本当に0円なのか分からない
+function renderError(message) {
+  $app.innerHTML = `
+    <div class="gate">
+      <h1>読み込めませんでした</h1>
+      <div class="card notice" style="text-align:left">
+        <div><b>${esc(message)}</b></div>
+        <p class="note">
+          通信状況を確かめて開き直してください。何度も出る場合は、共有URL(?h=…付き)が
+          正しいかご確認ください。<b>この画面のまま新しい家計簿を作らないでください</b>
+          (別々の家計簿になってしまいます)。
+        </p>
+        <button class="btn primary" id="reload-btn">開き直す</button>
+      </div>
+    </div>`;
+  document.getElementById('reload-btn').addEventListener('click', () => location.reload());
+}
+
 // ---------- 初期設定 ----------
 function renderSetup() {
   $app.innerHTML = `
     <div class="gate">
       <h1>ふたり家計簿</h1>
       <p>預かり金10万円の項目別予算・繰越を管理します</p>
+      ${store.mode === 'cloud' ? `
+        <div class="card notice" style="text-align:left">
+          <div><b>すでに家計簿がある場合はこちら</b></div>
+          <p class="note">
+            ここで新しく作ると<b>相手とは別の家計簿</b>になり、入力が共有されません。
+            パートナーの設定画面から共有URLをコピーして貼り付けてください。
+          </p>
+          <div class="field">
+            <input id="join-url" type="text" inputmode="url" placeholder="共有URLを貼り付け" />
+          </div>
+          <button class="btn primary" id="join-btn">この家計簿に参加する</button>
+        </div>` : ''}
       <div class="card">
         <div class="field">
           <label>共通PIN(4〜6桁の数字)を決めてください</label>
@@ -115,25 +148,18 @@ function renderSetup() {
           <label>もう一度入力</label>
           <input id="pin2" type="password" inputmode="numeric" maxlength="6" autocomplete="off" />
         </div>
+        ${store.mode === 'cloud' ? `
+          <label class="confirm-row">
+            <input type="checkbox" id="confirm-new" />
+            <span>新しい家計簿を作ります(既存の家計簿とは別になります)</span>
+          </label>` : ''}
         <div class="pin-error" id="pin-error"></div>
-        <button class="btn primary" id="start-btn">新しくはじめる</button>
+        <button class="btn ghost" id="start-btn">新しく作る</button>
         <p class="note" style="margin-top:12px">
           開始月: 2026年8月 / 項目10個・予算合計100,000円で作成します(あとで設定から変更できます)。
           ${store.mode === 'local' ? '現在はこの端末のみに保存されます。二人での共有はFirebase設定後に有効になります。' : ''}
         </p>
       </div>
-      ${store.mode === 'cloud' ? `
-        <div class="card">
-          <div class="field">
-            <label>パートナーがもう作成している場合</label>
-            <input id="join-url" type="text" inputmode="url" placeholder="共有URLを貼り付け" />
-          </div>
-          <button class="btn ghost" id="join-btn">共有URLで参加する</button>
-          <p class="note" style="margin-top:10px">
-            こちらから参加しないと<b>別々の家計簿</b>になってしまいます。
-            共有URLはパートナーの設定画面からコピーできます。
-          </p>
-        </div>` : ''}
     </div>`;
 
   const joinBtn = document.getElementById('join-btn');
@@ -147,6 +173,11 @@ function renderSetup() {
     const p1 = document.getElementById('pin1').value.trim();
     const p2 = document.getElementById('pin2').value.trim();
     const err = document.getElementById('pin-error');
+    const confirmNew = document.getElementById('confirm-new');
+    if (confirmNew && !confirmNew.checked) {
+      err.textContent = '新しく作る場合はチェックを入れてください(通常は上の「参加する」を使います)';
+      return;
+    }
     if (!/^\d{4,6}$/.test(p1)) { err.textContent = 'PINは4〜6桁の数字にしてください'; return; }
     if (p1 !== p2) { err.textContent = '2回の入力が一致しません'; return; }
     const s = defaultSettings();
