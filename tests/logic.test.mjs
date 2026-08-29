@@ -9,6 +9,7 @@ import {
   setBudgetFrom,
   setBudgetForMonth,
   computeMonthSummary,
+  householdAmount,
   validateBackup,
 } from '../public/js/logic.js';
 import { defaultSettings, migrateSettings } from '../public/js/defaults.js';
@@ -167,6 +168,30 @@ test('計上月: 数ヶ月前に遡って入力できる', () => {
   // 遡って入力した超過分は、それ以降の月の使える額に正しく反映される
   assert.equal(rowOf(computeMonthSummary(s, [bill], '2026-09'), 'water').available, -3000);
   assert.equal(rowOf(computeMonthSummary(s, [bill], '2026-10'), 'water').available, 3000);
+});
+
+test('立替: 立て替えた分は予算から差し引かれない', () => {
+  const s = defaultSettings();
+  // 5,000円払ったが、うち2,000円は友達の分(あとで返してもらう)
+  const e = { ...exp('2026-08-10', 'food', 5000), advance: 2000, advanceSettled: false };
+  assert.equal(householdAmount(e), 3000);
+  const aug = rowOf(computeMonthSummary(s, [e], '2026-08'), 'food');
+  assert.equal(aug.spent, 3000); // 家計の消費は3,000円だけ
+  assert.equal(aug.remaining, 53000);
+  // 精算済みにしても予算計算は変わらない(最初から含めていないため)
+  const settled = { ...e, advanceSettled: true };
+  assert.equal(rowOf(computeMonthSummary(s, [settled], '2026-08'), 'food').spent, 3000);
+  // advance が無い既存データは全額が家計分(互換)
+  assert.equal(householdAmount(exp('2026-08-10', 'food', 5000)), 5000);
+});
+
+test('立替: 全額が立替のケース(自分の分ゼロ)も扱える', () => {
+  const s = defaultSettings();
+  const e = { ...exp('2026-08-10', 'shared', 8000), advance: 8000, advanceSettled: false };
+  const aug = rowOf(computeMonthSummary(s, [e], '2026-08'), 'shared');
+  assert.equal(aug.spent, 0);
+  assert.equal(aug.remaining, 10000);
+  assert.equal(aug.entryCount, 1); // 入力自体はあった扱い(光熱費の未入力判定と同じ仕組み)
 });
 
 test('項目名: 短い名称になっている', () => {

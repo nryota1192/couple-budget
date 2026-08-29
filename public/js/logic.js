@@ -14,6 +14,12 @@ export function monthOfDate(dateStr) {
   return dateStr.slice(0, 7);
 }
 
+// 家計として使った額。他の人の分を立て替えた分(advance)は
+// あとで返ってくるお金なので、最初から予算に計上しない。
+export function householdAmount(e) {
+  return e.amount - (e.advance ?? 0);
+}
+
 // バックアップJSONの検証。壊れたファイルで家計簿を上書きしないための門番。
 // 戻り値: { ok: true, data } | { ok: false, error }
 export function validateBackup(obj) {
@@ -129,7 +135,7 @@ export function computeMonthSummary(settings, expenses, month) {
   const countMap = new Map();
   for (const e of expenses) {
     const key = `${expenseMonth(e)}|${e.categoryId}`;
-    spentMap.set(key, (spentMap.get(key) ?? 0) + e.amount);
+    spentMap.set(key, (spentMap.get(key) ?? 0) + householdAmount(e));
     countMap.set(key, (countMap.get(key) ?? 0) + 1);
   }
 

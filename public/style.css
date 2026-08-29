@@ -254,6 +254,16 @@ table.report tfoot td { font-weight: 700; border-top: 1px solid var(--line); }
 .sum-note { font-size: 13px; margin: 10px 2px; color: var(--ink-2); }
 .sum-note.bad { color: var(--warn); font-weight: 600; }
 
+/* 未精算の立替 */
+.advance-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 0; margin-top: 8px; border-top: 1px solid var(--line);
+}
+.advance-row .info { flex: 1; min-width: 0; }
+.advance-row .cat { font-weight: 600; font-size: 14px; }
+.advance-row .memo { font-size: 12px; color: var(--ink-3); }
+.btn.btn-small { width: auto; padding: 8px 12px; font-size: 13px; flex: none; }
+
 /* 確認チェック(うっかり新規作成の防止) */
 .confirm-row {
   display: flex; align-items: flex-start; gap: 8px;

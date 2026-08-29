@@ -7,6 +7,7 @@ import {
   prevMonth,
   monthOfDate,
   expenseMonth,
+  householdAmount,
   setBudgetFrom,
   setBudgetForMonth,
   effectiveBudget,
@@ -434,6 +435,20 @@ function renderAdd(editId) {
           placeholder="0" value="${editing ? editing.amount : ''}" />
       </div>
       <div class="field">
+        <label class="confirm-row" style="margin:0">
+          <input type="checkbox" id="advance-check" ${(editing?.advance ?? 0) > 0 ? 'checked' : ''} />
+          <span>他の人の分を立て替えて一緒に払った</span>
+        </label>
+        <div id="advance-box" style="${(editing?.advance ?? 0) > 0 ? '' : 'display:none'}">
+          <input id="advance" class="num" type="number" inputmode="numeric" min="1" step="1"
+            placeholder="うち立て替えた金額(円)" value="${editing?.advance || ''}" style="text-align:right" />
+          <p class="note" style="margin:6px 0 0">
+            立替分は予算から差し引かれません。履歴画面の「未精算の立替」に載り、
+            返してもらったら精算済みにできます。
+          </p>
+        </div>
+      </div>
+      <div class="field">
         <label>日付(支払日・購入日)</label>
         <input id="date" type="date" value="${editing ? editing.date : todayStr()}" />
       </div>
@@ -484,6 +499,10 @@ function renderAdd(editId) {
   });
   refresh();
 
+  document.getElementById('advance-check').addEventListener('change', (ev) => {
+    document.getElementById('advance-box').style.display = ev.target.checked ? '' : 'none';
+  });
+
   document.getElementById('save-btn').addEventListener('click', async () => {
     const amount = Math.floor(Number(document.getElementById('amount').value));
     const date = document.getElementById('date').value;
@@ -491,6 +510,12 @@ function renderAdd(editId) {
     if (!currentCat) { toast('項目を選んでください'); return; }
     if (!Number.isFinite(amount) || amount <= 0) { toast('金額を入力してください'); return; }
     if (!date) { toast('日付を入力してください'); return; }
+    const advChecked = document.getElementById('advance-check').checked;
+    const advance = advChecked ? Math.floor(Number(document.getElementById('advance').value)) : 0;
+    if (advChecked && (!Number.isFinite(advance) || advance <= 0)) {
+      toast('立て替えた金額を入力してください'); return;
+    }
+    if (advance > amount) { toast('立替分が支払金額を超えています'); return; }
     const record = {
       id: editing ? editing.id : crypto.randomUUID(),
       date,
@@ -501,6 +526,7 @@ function renderAdd(editId) {
       // 入力者は最初に記録した人のまま(編集しても書き換えない)
       by: editing ? (editing.by ?? '') : memberName(),
       createdAt: editing ? editing.createdAt : Date.now(),
+      ...(advance > 0 ? { advance, advanceSettled: editing?.advanceSettled ?? false } : {}),
     };
     if (editing) await store.updateExpense(record);
     else await store.addExpense(record);
@@ -532,7 +558,7 @@ function renderHistory() {
   const list = expenses()
     .filter((e) => expenseMonth(e) === month)
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.createdAt - a.createdAt));
-  const total = list.reduce((s, e) => s + e.amount, 0);
+  const total = list.reduce((s, e) => s + householdAmount(e), 0);
   const byDate = new Map();
   for (const e of list) {
     if (!byDate.has(e.date)) byDate.set(e.date, []);
@@ -541,8 +567,25 @@ function renderHistory() {
   const canPrev = month > settings().startMonth;
   const canNext = month < currentMonth();
 
+  // 未精算の立替は月をまたいで残るので、表示中の月に関係なく全件出す
+  const outstanding = expenses()
+    .filter((e) => (e.advance ?? 0) > 0 && !e.advanceSettled)
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+
   $app.innerHTML = `
-    <header class="app-header"><h1>履歴</h1><span class="month num">入力計 ${yen(total)}</span></header>
+    <header class="app-header"><h1>履歴</h1><span class="month num">支出計 ${yen(total)}</span></header>
+    ${outstanding.length === 0 ? '' : `
+      <div class="card notice">
+        <div><b>未精算の立替 ${outstanding.length}件・${yen(outstanding.reduce((t, e) => t + e.advance, 0))}</b></div>
+        ${outstanding.map((e) => `
+          <div class="advance-row">
+            <div class="info">
+              <div class="cat num">${yen(e.advance)}<span class="type" style="display:inline;margin-left:6px">${esc(catName(e.categoryId))}分</span></div>
+              <div class="memo">${Number(e.date.slice(5, 7))}/${Number(e.date.slice(8, 10))}${e.memo ? ' · ' + esc(e.memo) : ''}${e.by ? ' · ' + esc(e.by) : ''}</div>
+            </div>
+            <button class="btn ghost btn-small" data-settle="${e.id}">精算済みにする</button>
+          </div>`).join('')}
+      </div>`}
     <div class="month-nav">
       <button id="m-prev" ${canPrev ? '' : 'disabled'}>‹</button>
       <b>${monthLabel(month)}</b>
@@ -556,11 +599,14 @@ function renderHistory() {
       </div>
       ${rows.map((e) => {
         const sub = [e.by, e.memo].filter(Boolean).map(esc).join(' · ');
+        const adv = (e.advance ?? 0) > 0
+          ? `<span class="badge ${e.advanceSettled ? 'muted' : 'warn'}">${e.advanceSettled ? '立替 精算済' : `立替 ${yen(e.advance)}`}</span>`
+          : '';
         return `
         <div class="exp-row" data-edit="${e.id}">
           <span class="exp-icon">${catIcon(e.categoryId)}</span>
           <div class="info">
-            <div class="cat">${esc(catName(e.categoryId))}</div>
+            <div class="cat">${esc(catName(e.categoryId))} ${adv}</div>
             ${sub ? `<div class="memo">${sub}</div>` : ''}
           </div>
           <div class="amt num">${yen(e.amount)}</div>
@@ -577,6 +623,14 @@ function renderHistory() {
   });
   $app.querySelectorAll('[data-edit]').forEach((el) =>
     el.addEventListener('click', () => go(`edit/${el.dataset.edit}`)));
+  $app.querySelectorAll('[data-settle]').forEach((el) =>
+    el.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      const e = expenses().find((x) => x.id === el.dataset.settle);
+      if (!e) return;
+      await store.updateExpense({ ...e, advanceSettled: true });
+      toast('精算済みにしました');
+    }));
   bindNav();
 }
 
