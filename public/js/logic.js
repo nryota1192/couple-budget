@@ -87,12 +87,19 @@ export function monthRange(start, end) {
 
 // その月に適用される予算額(budgetsはfrom昇順前提)
 export function effectiveBudget(category, month) {
-  let amount = category.budgets.length ? category.budgets[0].amount : 0;
+  // 最初のエントリより前の月は、その項目がまだ存在しない = 予算0。
+  // (途中の月から項目を追加したとき、過去月に予算が付いてしまうのを防ぐ)
+  let amount = 0;
   for (const b of category.budgets) {
     if (b.from <= month) amount = b.amount;
     else break;
   }
   return amount;
+}
+
+// その月にこの項目を表示すべきか(予算も支出も繰越も無い月は、まだ存在しない項目)
+export function isActiveInMonth(row) {
+  return row.budget !== 0 || row.spent !== 0 || row.carryIn !== 0;
 }
 
 // 予算変更: month以降の予算をamountにする(過去月は保持)

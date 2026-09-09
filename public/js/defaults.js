@@ -57,6 +57,7 @@ export function migrateSettings(settings) {
 const ICONS = {
   rent: '🏠', electricity: '⚡', gas: '🔥', water: '💧', insurance: '🛡️',
   food: '🍚', education: '📚', appliance: '🔌', household: '🧴', shared: '👫',
+  moving: '📦',
 };
 const TYPE_ICONS = { fixed: '🏠', utility: '💡', variable: '🛒', savings: '💰' };
 

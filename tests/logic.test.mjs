@@ -9,6 +9,7 @@ import {
   setBudgetFrom,
   setBudgetForMonth,
   computeMonthSummary,
+  isActiveInMonth,
   householdAmount,
   validateBackup,
 } from '../public/js/logic.js';
@@ -192,6 +193,49 @@ test('立替: 全額が立替のケース(自分の分ゼロ)も扱える', () =
   assert.equal(aug.spent, 0);
   assert.equal(aug.remaining, 10000);
   assert.equal(aug.entryCount, 1); // 入力自体はあった扱い(光熱費の未入力判定と同じ仕組み)
+});
+
+test('途中の月から項目を追加しても、それ以前の月には予算が付かない', () => {
+  const s = defaultSettings();
+  // 9月から始まる「引っ越し準備金」を追加(8月はまだ存在しない項目)
+  const moving = {
+    id: 'moving', name: '引っ越し準備金', type: 'savings',
+    sortOrder: 11, active: true, budgets: [{ from: '2026-09', amount: 20000 }],
+  };
+  s.categories.push(moving);
+
+  assert.equal(effectiveBudget(moving, '2026-07'), 0);
+  assert.equal(effectiveBudget(moving, '2026-08'), 0, '追加前の月に予算が付いてはいけない');
+  assert.equal(effectiveBudget(moving, '2026-09'), 20000);
+  assert.equal(effectiveBudget(moving, '2026-10'), 20000);
+
+  // 8月の予算合計と繰越が、追加前(200,000円)から変わらないこと
+  const aug = computeMonthSummary(s, [], '2026-08');
+  assert.equal(aug.totals.budget, 200000, '過去月の予算合計が変わってはいけない');
+  const augRow = rowOf(aug, 'moving');
+  assert.equal(augRow.budget, 0);
+  assert.equal(augRow.remaining, 0, '8月から繰越が発生してはいけない');
+
+  // 9月から正しく積み上がる
+  const sepRow = rowOf(computeMonthSummary(s, [], '2026-09'), 'moving');
+  assert.equal(sepRow.carryIn, 0);
+  assert.equal(sepRow.available, 20000);
+  assert.equal(rowOf(computeMonthSummary(s, [], '2026-11'), 'moving').available, 60000); // 3ヶ月分
+});
+
+test('表示: まだ存在しない月の項目は隠し、繰越が残る月は表示する', () => {
+  const s = defaultSettings();
+  const moving = {
+    id: 'moving', name: '引っ越し準備金', type: 'savings',
+    sortOrder: 11, active: true, budgets: [{ from: '2026-09', amount: 20000 }],
+  };
+  s.categories.push(moving);
+  assert.equal(isActiveInMonth(rowOf(computeMonthSummary(s, [], '2026-08'), 'moving')), false);
+  assert.equal(isActiveInMonth(rowOf(computeMonthSummary(s, [], '2026-09'), 'moving')), true);
+  // 既存の項目は当然すべて表示される
+  for (const r of computeMonthSummary(s, [], '2026-08').rows.filter((x) => x.category.id !== 'moving')) {
+    assert.equal(isActiveInMonth(r), true, `${r.category.name} が隠れてはいけない`);
+  }
 });
 
 test('項目名: 短い名称になっている', () => {

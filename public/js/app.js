@@ -8,6 +8,7 @@ import {
   monthOfDate,
   expenseMonth,
   householdAmount,
+  isActiveInMonth,
   setBudgetFrom,
   setBudgetForMonth,
   effectiveBudget,
@@ -347,7 +348,8 @@ function renderHome() {
     ${namePromptHtml}
     ${pendingHtml}
     ${groups.map(([label, type]) => {
-      const rows = summary.rows.filter((r) => r.category.active && r.category.type === type);
+      const rows = summary.rows.filter((r) =>
+        r.category.active && r.category.type === type && isActiveInMonth(r));
       if (!rows.length) return '';
       return `<div class="section-title">${label}</div>`
         + rows.map((r) => catCard(r, month === currentMonth())).join('');
@@ -639,7 +641,7 @@ function renderReport() {
   const month = ui.reportMonth ?? homeMonth();
   ui.reportMonth = month;
   const summary = computeMonthSummary(settings(), expenses(), month);
-  const rows = summary.rows.filter((r) => r.category.active);
+  const rows = summary.rows.filter((r) => r.category.active && isActiveInMonth(r));
   const sum = (f) => rows.reduce((s, r) => s + f(r), 0);
   const canPrev = month > settings().startMonth;
   const canNext = month < currentMonth();
