@@ -13,6 +13,9 @@ import {
   setBudgetForMonth,
   effectiveBudget,
   validateBackup,
+  shoppingCategories,
+  groupShoppingItems,
+  shoppingMemo,
 } from './logic.js';
 
 const $app = document.getElementById('app');
@@ -27,7 +30,16 @@ const ui = {
   historyMonth: null,
   reportMonth: null,
   addCat: null,
+  // 買い物リストから支出入力へ移ったときの引き継ぎ(保存に成功したら品目をリストから消す)
+  addMemo: null,
+  shoppingIds: null,
+  shoppingCat: 'food', // 買い物リストで最後に選んだ項目
 };
+
+// 入力途中のフォームがあるか。相方の更新でストアが変わっても、
+// 入力中の画面を作り直して打った内容を消さないために使う
+let formDirty = false;
+const FORM_VIEWS = ['add', 'edit', 'settings'];
 
 // ---------- ユーティリティ ----------
 const esc = (s) =>
@@ -101,6 +113,7 @@ function render() {
   else if (view === 'edit') renderAdd(arg);
   else if (view === 'history') renderHistory();
   else if (view === 'report') renderReport();
+  else if (view === 'shopping') renderShopping();
   else if (view === 'settings') renderSettings();
   else renderHome();
 }
@@ -226,24 +239,40 @@ const ICONS = {
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>',
   history: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>',
   report: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg>',
+  shopping: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h2l2.4 11.2a1 1 0 0 0 1 .8h8.8a1 1 0 0 0 1-.8L20 8H6.2"/><circle cx="9.5" cy="20" r="1.3"/><circle cx="17" cy="20" r="1.3"/></svg>',
   settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6a7 7 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2Z"/></svg>',
 };
 
+// 未チェックの品目数(下部メニューのバッジ用)
+const openShoppingCount = () => (store.getShopping?.() ?? []).filter((i) => !i.checked).length;
+
 function navHtml(active) {
-  const btn = (id, label) => `
+  const btn = (id, label, badge = '') => `
     <button class="nav-btn ${active === id ? 'active' : ''}" data-nav="${id}">
-      ${ICONS[id]}<span>${label}</span>
+      ${ICONS[id]}<span>${label}</span>${badge}
     </button>`;
+  const count = openShoppingCount();
+  const badge = `<i class="nav-badge num" ${count ? '' : 'hidden'}>${count}</i>`;
+  // レポートは使う頻度が低いので、履歴画面の上部から開く形にし、枠を買い物リストに譲った
   return `
     <nav class="bottom-nav"><div class="inner">
       ${btn('home', 'ホーム')}
-      ${btn('history', '履歴')}
+      ${btn('shopping', '買い物', badge)}
       <button class="nav-btn add-btn" data-nav="add" aria-label="支出を入力">
         <span class="fab">+</span><span class="lbl">入力</span>
       </button>
-      ${btn('report', 'レポート')}
+      ${btn('history', '履歴')}
       ${btn('settings', '設定')}
     </div></nav>`;
+}
+
+// 画面を作り直さずにバッジの数字だけ更新する(入力途中の画面を守るとき用)
+function updateNavBadge() {
+  const el = $app.querySelector('[data-nav="shopping"] .nav-badge');
+  if (!el) return;
+  const count = openShoppingCount();
+  el.textContent = String(count);
+  el.hidden = count === 0;
 }
 
 function bindNav() {
@@ -400,6 +429,11 @@ function renderAdd(editId) {
     <header class="app-header">
       <h1>${editing ? '支出を編集' : '支出を入力'}</h1>
     </header>
+    ${!editing && ui.shoppingIds?.length ? `
+      <div class="card notice">
+        <b>買い物リストの${ui.shoppingIds.length}品を記録します</b>
+        <p class="note" style="margin-bottom:0">レシートの金額を入れて記録すると、この品目はリストから消えます。</p>
+      </div>` : ''}
     <div class="card">
       <div class="field">
         <label>項目</label>
@@ -456,7 +490,7 @@ function renderAdd(editId) {
       </div>
       <div class="field">
         <label>メモ(任意)</label>
-        <input id="memo" type="text" maxlength="60" placeholder="例: スーパーで買い出し" value="${editing ? esc(editing.memo) : ''}" />
+        <input id="memo" type="text" maxlength="60" placeholder="例: スーパーで買い出し" value="${editing ? esc(editing.memo) : esc(ui.addMemo ?? '')}" />
       </div>
       <button class="btn primary" id="save-btn"></button>
       ${editing ? '<button class="btn danger-ghost" id="delete-btn">この支出を削除</button>' : ''}
@@ -532,10 +566,24 @@ function renderAdd(editId) {
     };
     if (editing) await store.updateExpense(record);
     else await store.addExpense(record);
+    // 支出の保存に成功してから、買い物リストの品目を消す(保存に失敗したら品目は残る)
+    const boughtIds = !editing ? ui.shoppingIds : null;
+    let shoppingNote = '';
+    if (boughtIds?.length) {
+      try {
+        await store.deleteShoppingItems(boughtIds);
+        shoppingNote = '・リストから消しました';
+      } catch {
+        shoppingNote = '(リストからは消せませんでした)';
+      }
+    }
     ui.addCat = null;
+    ui.addMemo = null;
+    ui.shoppingIds = null;
+    formDirty = false;
     ui.historyMonth = record.month;
     ui.reportMonth = record.month;
-    toast(editing ? '更新しました' : `${monthLabel(record.month)}分に記録しました`);
+    toast(editing ? '更新しました' : `${monthLabel(record.month)}分に記録しました${shoppingNote}`);
     // 今月分ならホームで残額を確認、過去月分はその月の履歴へ
     go(!editing && record.month === homeMonth() ? 'home' : 'history');
   });
@@ -576,6 +624,7 @@ function renderHistory() {
 
   $app.innerHTML = `
     <header class="app-header"><h1>履歴</h1><span class="month num">支出計 ${yen(total)}</span></header>
+    <button class="btn ghost" data-nav="report" style="margin-bottom:12px">📊 月次レポートを見る</button>
     ${outstanding.length === 0 ? '' : `
       <div class="card notice">
         <div><b>未精算の立替 ${outstanding.length}件・${yen(outstanding.reduce((t, e) => t + e.advance, 0))}</b></div>
@@ -636,6 +685,165 @@ function renderHistory() {
   bindNav();
 }
 
+// ---------- 買い物リスト ----------
+function renderShopping() {
+  // 品目名を打っている途中に相方の更新で作り直しても、入力とカーソルを失わないよう控えておく
+  const prevInput = document.getElementById('shop-name');
+  const keep = prevInput
+    ? {
+      value: prevInput.value,
+      focused: document.activeElement === prevInput,
+      start: prevInput.selectionStart,
+      end: prevInput.selectionEnd,
+    }
+    : null;
+
+  const cats = shoppingCategories(settings().categories);
+  if (!cats.some((c) => c.id === ui.shoppingCat)) ui.shoppingCat = cats[0]?.id ?? null;
+  const items = store.getShopping();
+  const groups = groupShoppingItems(items, settings().categories);
+  const checkedCount = items.filter((i) => i.checked).length;
+  const shopError = store.getShoppingError();
+  const summary = computeMonthSummary(settings(), expenses(), homeMonth());
+  const remainingOf = (id) => summary.rows.find((r) => r.category.id === id)?.remaining;
+
+  $app.innerHTML = `
+    <header class="app-header">
+      <h1>買い物リスト</h1>
+      <span class="month num">${items.length - checkedCount}件</span>
+    </header>
+    ${shopError ? `<div class="card notice"><b>${esc(shopError)}</b>
+      <p class="note" style="margin-bottom:0">家計簿の入力は通常どおり使えます。</p></div>` : ''}
+    <div class="card">
+      <form id="shop-form" class="shop-add" autocomplete="off">
+        <input id="shop-name" type="text" maxlength="40" placeholder="買うものを追加(例: 牛乳)" enterkeyhint="done" />
+        <button class="btn primary" type="submit">追加</button>
+      </form>
+      <div class="chips shop-cats">
+        ${cats.map((c) => `
+          <button type="button" class="chip chip-small ${ui.shoppingCat === c.id ? 'selected' : ''}" data-shopcat="${c.id}">
+            <span class="chip-icon">${iconFor(c)}</span><span class="chip-name">${esc(c.name)}</span>
+          </button>`).join('')}
+      </div>
+    </div>
+    ${groups.length === 0 ? '<div class="empty">リストは空です。買うものを追加しましょう</div>' : ''}
+    ${groups.map((g) => {
+      const checked = g.items.filter((i) => i.checked);
+      const remaining = g.category ? remainingOf(g.category.id) : undefined;
+      return `
+        <div class="section-title shop-group-title">
+          <span>${g.category ? `${iconFor(g.category)} ${esc(g.category.name)}` : 'その他'}</span>
+          ${remaining === undefined ? '' : `<span class="num ${remaining < 0 ? 'neg' : ''}">残り ${yen(remaining)}</span>`}
+        </div>
+        <div class="card shop-card">
+          ${g.items.map((i) => `
+            <div class="shop-item ${i.checked ? 'done' : ''}">
+              <button type="button" class="shop-check" data-toggle="${i.id}" aria-pressed="${i.checked}"
+                aria-label="${esc(i.name)}を${i.checked ? '未購入に戻す' : '購入済みにする'}">
+                <span class="box">${i.checked ? '✓' : ''}</span>
+                <span class="shop-name">${esc(i.name)}</span>
+              </button>
+              ${i.by ? `<span class="shop-by">${esc(i.by)}</span>` : ''}
+              <button type="button" class="shop-del" data-remove="${i.id}" aria-label="${esc(i.name)}を削除">✕</button>
+            </div>`).join('')}
+          ${checked.length && g.category ? `
+            <button type="button" class="btn ghost btn-small shop-record" data-record="${g.category.id}">
+              ✓の${checked.length}品を${esc(g.category.name)}に記録する
+            </button>` : ''}
+        </div>`;
+    }).join('')}
+    ${checkedCount ? `
+      <button type="button" class="btn danger-ghost" id="shop-clear">チェック済み${checkedCount}品をリストから消す</button>` : ''}
+    ${navHtml('shopping')}`;
+
+  const input = document.getElementById('shop-name');
+  if (keep) {
+    input.value = keep.value;
+    if (keep.focused) {
+      input.focus();
+      input.setSelectionRange(keep.start ?? input.value.length, keep.end ?? input.value.length);
+    }
+  }
+
+  document.getElementById('shop-form').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const name = input.value.trim();
+    if (!name) { input.focus(); return; }
+    if (!ui.shoppingCat) { toast('項目を選んでください'); return; }
+    input.value = ''; // 連続して追加しやすいよう、先に空けてフォーカスを残す
+    input.focus();
+    try {
+      await store.addShoppingItem({
+        id: crypto.randomUUID(),
+        name,
+        categoryId: ui.shoppingCat,
+        checked: false,
+        by: memberName(),
+        createdAt: Date.now(),
+        checkedAt: null,
+      });
+    } catch {
+      input.value = name; // 失敗したら打った内容を戻す
+      toast('追加できませんでした。通信状況を確認してください');
+    }
+  });
+
+  $app.querySelectorAll('[data-shopcat]').forEach((el) =>
+    el.addEventListener('click', () => {
+      ui.shoppingCat = el.dataset.shopcat;
+      $app.querySelectorAll('[data-shopcat]').forEach((c) =>
+        c.classList.toggle('selected', c.dataset.shopcat === ui.shoppingCat));
+      input.focus();
+    }));
+
+  $app.querySelectorAll('[data-toggle]').forEach((el) =>
+    el.addEventListener('click', async () => {
+      const item = store.getShopping().find((x) => x.id === el.dataset.toggle);
+      if (!item) return;
+      try {
+        await store.setShoppingChecked(item.id, !item.checked);
+      } catch {
+        toast('更新できませんでした');
+      }
+    }));
+
+  $app.querySelectorAll('[data-remove]').forEach((el) =>
+    el.addEventListener('click', async () => {
+      try {
+        await store.deleteShoppingItems([el.dataset.remove]);
+      } catch {
+        toast('削除できませんでした');
+      }
+    }));
+
+  const clearBtn = document.getElementById('shop-clear');
+  if (clearBtn) clearBtn.addEventListener('click', async () => {
+    const ids = store.getShopping().filter((i) => i.checked).map((i) => i.id);
+    if (!confirm(`チェック済みの${ids.length}品をリストから消しますか?`)) return;
+    try {
+      await store.deleteShoppingItems(ids);
+      toast(`${ids.length}品を消しました`);
+    } catch {
+      toast('消せませんでした');
+    }
+  });
+
+  // ✓を付けた品目を、その項目の支出として入力画面へ引き継ぐ
+  $app.querySelectorAll('[data-record]').forEach((el) =>
+    el.addEventListener('click', () => {
+      const picked = store.getShopping()
+        .filter((i) => i.checked && i.categoryId === el.dataset.record)
+        .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+      if (!picked.length) return;
+      ui.addCat = el.dataset.record;
+      ui.addMemo = shoppingMemo(picked);
+      ui.shoppingIds = picked.map((i) => i.id);
+      go('add');
+    }));
+
+  bindNav();
+}
+
 // ---------- 月次レポート ----------
 function renderReport() {
   const month = ui.reportMonth ?? homeMonth();
@@ -648,7 +856,7 @@ function renderReport() {
   const cell = (v) => `<td class="num ${v < 0 ? 'negative' : ''}">${v.toLocaleString('ja-JP')}</td>`;
 
   $app.innerHTML = `
-    <header class="app-header"><h1>月次レポート</h1></header>
+    <header class="app-header"><h1>月次レポート</h1><span class="month"><a href="#history">‹ 履歴へ</a></span></header>
     <div class="month-nav">
       <button id="m-prev" ${canPrev ? '' : 'disabled'}>‹</button>
       <b>${monthLabel(month)}</b>
@@ -673,7 +881,7 @@ function renderReport() {
       </table>
     </div>
     <p class="note">単位: 円。「繰越」は前月からの持ち越し、「翌月へ」は翌月に持ち越す額です。マイナスは使いすぎ(翌月の使える額から差し引き)。固定費は毎月自動で全額消化として計算しています。</p>
-    ${navHtml('report')}`;
+    ${navHtml('history')}`;
 
   document.getElementById('m-prev').addEventListener('click', () => {
     ui.reportMonth = prevMonth(month); render();
@@ -860,8 +1068,37 @@ function renderSettings() {
 async function main() {
   store = await createStore();
   await store.init();
-  window.addEventListener('hashchange', render);
-  store.subscribe(render);
+  // 動作確認用: localhost でだけ、相方の操作(ストアの変更)をコンソールから再現できるようにする
+  if (['localhost', '127.0.0.1'].includes(location.hostname)) {
+    window.__coupleBudget = { store, render };
+  }
+  // 入力・選択・チェックのどれかを触ったら「入力途中」とみなす
+  const markDirty = (ev) => {
+    if (FORM_VIEWS.includes(route().view) && ev.target.matches('input, select, textarea')) {
+      formDirty = true;
+    }
+  };
+  $app.addEventListener('input', markDirty);
+  $app.addEventListener('change', markDirty);
+
+  window.addEventListener('hashchange', () => {
+    formDirty = false;
+    // 支出入力から離れたら、買い物リストからの引き継ぎは取り消す(次に普通に入力したとき残らないように)
+    if (route().view !== 'add') {
+      ui.addMemo = null;
+      ui.shoppingIds = null;
+    }
+    render();
+  });
+
+  // 相方の操作などでストアが変わったとき。入力途中のフォームは作り直さず、バッジだけ更新する
+  store.subscribe(() => {
+    if (formDirty && FORM_VIEWS.includes(route().view)) {
+      updateNavBadge();
+      return;
+    }
+    render();
+  });
   render();
 }
 main();

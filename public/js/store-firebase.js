@@ -12,6 +12,7 @@ import {
   collection,
   onSnapshot,
   setDoc,
+  updateDoc,
   deleteDoc,
   getDocs,
   writeBatch,
@@ -45,11 +46,15 @@ export function createFirestoreStore(config) {
   let expenses = [];
   let ready = false;
   let loadError = null;
+  let shopping = [];
+  let shoppingError = null;
   const listeners = new Set();
   const emit = () => listeners.forEach((fn) => fn());
 
   const settingsRef = () => doc(db, 'households', householdId);
   const expensesCol = () => collection(db, 'households', householdId, 'expenses');
+  // 品目ごとに1文書。店で二人が同時にチェックしても、互いの操作を上書きしない
+  const shoppingCol = () => collection(db, 'households', householdId, 'shopping');
 
   function watch() {
     putIdInUrl(householdId);
@@ -71,6 +76,15 @@ export function createFirestoreStore(config) {
       emit();
     }, (err) => {
       loadError = `支出の読み込みに失敗しました (${err.code})`;
+      emit();
+    });
+    onSnapshot(shoppingCol(), (snap) => {
+      shopping = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      shoppingError = null;
+      emit();
+    }, (err) => {
+      // 買い物リストが読めなくても家計簿本体は使えるよう、全体のエラー(loadError)にはしない
+      shoppingError = `買い物リストを読み込めませんでした (${err.code})`;
       emit();
     });
   }
@@ -97,6 +111,30 @@ export function createFirestoreStore(config) {
     },
     getData: () => (settings ? { settings, expenses } : null),
     getError: () => loadError,
+    getShopping: () => shopping,
+    getShoppingError: () => shoppingError,
+    async addShoppingItem(item) {
+      const { id, ...body } = item;
+      await setDoc(doc(shoppingCol(), id), body);
+    },
+    // チェックだけを部分更新する(品目名など他のフィールドを巻き戻さない)
+    async setShoppingChecked(id, checked) {
+      try {
+        await updateDoc(doc(shoppingCol(), id), {
+          checked,
+          checkedAt: checked ? Date.now() : null,
+        });
+      } catch (err) {
+        if (err.code !== 'not-found') throw err; // 相方が先に消した品目なら何もしない
+      }
+    },
+    async deleteShoppingItems(ids) {
+      for (let i = 0; i < ids.length; i += 400) {
+        const batch = writeBatch(db);
+        for (const id of ids.slice(i, i + 400)) batch.delete(doc(shoppingCol(), id));
+        await batch.commit();
+      }
+    },
     subscribe(fn) {
       listeners.add(fn);
       return () => listeners.delete(fn);

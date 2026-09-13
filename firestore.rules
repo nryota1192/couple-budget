@@ -11,6 +11,10 @@ service cloud.firestore {
       match /expenses/{expenseId} {
         allow read, write: if request.auth != null;
       }
+      // 買い物リスト(2026-09 追加)。支出と同じく、世帯IDを知らないと辿れない
+      match /shopping/{itemId} {
+        allow read, write: if request.auth != null;
+      }
     }
   }
 }

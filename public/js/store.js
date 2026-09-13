@@ -7,13 +7,20 @@
 import { firebaseConfig } from './firebase-config.js';
 
 const LOCAL_KEY = 'coupleBudget.v1';
+// 買い物リストは家計簿データと別キーに置く(バックアップの書き出し・復元の対象外にするため)
+const SHOPPING_KEY = 'coupleBudget.shopping.v1';
 
 function createLocalStore() {
   let data = null;
+  let shopping = [];
   const listeners = new Set();
   const emit = () => listeners.forEach((fn) => fn());
   const persist = () => {
     localStorage.setItem(LOCAL_KEY, JSON.stringify(data));
+    emit();
+  };
+  const persistShopping = () => {
+    localStorage.setItem(SHOPPING_KEY, JSON.stringify(shopping));
     emit();
   };
   return {
@@ -21,9 +28,32 @@ function createLocalStore() {
     async init() {
       const raw = localStorage.getItem(LOCAL_KEY);
       data = raw ? JSON.parse(raw) : null;
+      try {
+        shopping = JSON.parse(localStorage.getItem(SHOPPING_KEY) ?? '[]');
+        if (!Array.isArray(shopping)) shopping = [];
+      } catch {
+        shopping = []; // 壊れていても家計簿本体は開けるようにする
+      }
     },
     getData: () => data,
     getError: () => null,
+    getShopping: () => shopping,
+    getShoppingError: () => null,
+    async addShoppingItem(item) {
+      shopping.push(item);
+      persistShopping();
+    },
+    async setShoppingChecked(id, checked) {
+      shopping = shopping.map((x) => (x.id === id
+        ? { ...x, checked, checkedAt: checked ? Date.now() : null }
+        : x));
+      persistShopping();
+    },
+    async deleteShoppingItems(ids) {
+      const remove = new Set(ids);
+      shopping = shopping.filter((x) => !remove.has(x.id));
+      persistShopping();
+    },
     subscribe(fn) {
       listeners.add(fn);
       return () => listeners.delete(fn);

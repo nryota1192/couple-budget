@@ -188,3 +188,37 @@ export function computeMonthSummary(settings, expenses, month) {
 
   return { month: target, rows, totals };
 }
+
+// ---------- 買い物リスト ----------
+// 品目: { id, name, categoryId, checked, by, createdAt, checkedAt }
+
+// 買い物リストで選べる項目。家賃・保険(固定費)や光熱費は店で買うものではないので除く
+export function shoppingCategories(categories) {
+  return [...categories]
+    .filter((c) => c.active && (c.type === 'variable' || c.type === 'savings'))
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+// 項目ごとにまとめ、各項目内は「未チェックが上・チェック済みが下」、それぞれ追加した順。
+// 項目が無効化・削除された品目は最後の「その他」(category=null)に集める
+export function groupShoppingItems(items, categories) {
+  const cats = shoppingCategories(categories);
+  const byId = new Map(cats.map((c) => [c.id, { category: c, items: [] }]));
+  const other = { category: null, items: [] };
+  for (const item of items) {
+    (byId.get(item.categoryId) ?? other).items.push(item);
+  }
+  const order = (a, b) => (a.checked === b.checked
+    ? (a.createdAt ?? 0) - (b.createdAt ?? 0)
+    : a.checked ? 1 : -1);
+  const groups = [...byId.values(), other]
+    .filter((g) => g.items.length > 0)
+    .map((g) => ({ ...g, items: [...g.items].sort(order) }));
+  return groups;
+}
+
+// 買った品目を支出のメモにまとめる。メモ欄の上限(60文字)に収める
+export function shoppingMemo(items, max = 60) {
+  const text = items.map((i) => String(i.name ?? '').trim()).filter(Boolean).join('、');
+  return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+}

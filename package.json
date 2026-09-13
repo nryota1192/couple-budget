@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/logic.test.mjs tests/backup.test.mjs",
+    "test": "node --test tests/logic.test.mjs tests/backup.test.mjs tests/shopping.test.mjs",
     "backup": "node scripts/backup.mjs"
   }
 }
