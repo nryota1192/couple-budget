@@ -18,27 +18,29 @@
   --good-soft: #e6f4ea;
   --radius: 14px;
   --shadow: 0 1px 3px rgba(16, 24, 40, 0.08);
+  color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #13151a;
-    --surface: #1d2027;
-    --surface-2: #23262e;
-    --ink: #e9ebef;
-    --ink-2: #a6adbb;
-    --ink-3: #767e8c;
-    --line: #30343d;
-    --accent: #6c8cff;
-    --accent-ink: #10131c;
-    --accent-soft: #232c45;
-    --danger: #ff7aa2;
-    --danger-soft: #3a222c;
-    --warn: #e2b768;
-    --warn-soft: #38301e;
-    --good: #6fcf8b;
-    --good-soft: #1f3327;
-    --shadow: none;
-  }
+/* data-theme は index.html の先頭スクリプトが決める(自動=OS設定 / ライト / ダーク) */
+:root[data-theme="dark"] {
+  --bg: #13151a;
+  --surface: #1d2027;
+  --surface-2: #23262e;
+  --ink: #e9ebef;
+  --ink-2: #a6adbb;
+  --ink-3: #767e8c;
+  --line: #30343d;
+  --accent: #6c8cff;
+  --accent-ink: #10131c;
+  --accent-soft: #232c45;
+  --danger: #ff7aa2;
+  --danger-soft: #3a222c;
+  --warn: #e2b768;
+  --warn-soft: #38301e;
+  --good: #6fcf8b;
+  --good-soft: #1f3327;
+  --shadow: none;
+  /* Chromeの入力欄・セレクト・日付ピッカー・スクロールバーもダークにする */
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -250,6 +252,7 @@ table.report tfoot td { font-weight: 700; border-top: 1px solid var(--line); }
 .setting-row:last-child { border-bottom: none; }
 .setting-row .name { flex: 1; font-size: 14px; }
 .setting-row .type { font-size: 11px; color: var(--ink-3); display: block; }
+.setting-row select { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; }
 .setting-row input { width: 96px; text-align: right; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; }
 .sum-note { font-size: 13px; margin: 10px 2px; color: var(--ink-2); }
 .sum-note.bad { color: var(--warn); font-weight: 600; }

@@ -24,6 +24,9 @@ const UNLOCK_KEY = 'coupleBudget.unlockHash';
 // 「誰が入力したか」は端末ごとに持つ(二人が同じ買い物を二重入力したときに気づけるように)
 const MEMBER_KEY = 'coupleBudget.memberName';
 const memberName = () => localStorage.getItem(MEMBER_KEY) ?? '';
+// 画面の明るさも端末ごと(index.html の applyTheme が読む)
+const THEME_KEY = 'coupleBudget.theme';
+const THEMES = { auto: '自動(端末の設定に合わせる)', light: 'ライト', dark: 'ダーク' };
 
 let store;
 const ui = {
@@ -936,6 +939,16 @@ function renderSettings() {
       <button class="btn ghost" id="member-save2">名前を保存</button>
       <p class="note" style="margin-bottom:0">端末ごとの設定です。相手のスマホでは相手の名前を設定してください。</p>
     </div>
+    <div class="section-title">画面の明るさ</div>
+    <div class="card">
+      <div class="setting-row">
+        <span class="name">テーマ</span>
+        <select id="theme-select">
+          ${Object.entries(THEMES).map(([k, v]) => `<option value="${k}"${(localStorage.getItem(THEME_KEY) ?? 'auto') === k ? ' selected' : ''}>${v}</option>`).join('')}
+        </select>
+      </div>
+      <p class="note" style="margin-bottom:0">端末ごとの設定です。「自動」はスマホやChromeのダークモード設定に合わせます。</p>
+    </div>
     <div class="section-title">PIN変更</div>
     <div class="card">
       <div class="field">
@@ -1015,6 +1028,12 @@ function renderSettings() {
     if (name) localStorage.setItem(MEMBER_KEY, name);
     else localStorage.removeItem(MEMBER_KEY);
     toast(name ? `「${name}」として記録します` : '名前を消しました');
+  });
+
+  document.getElementById('theme-select').addEventListener('change', (ev) => {
+    if (ev.target.value === 'auto') localStorage.removeItem(THEME_KEY);
+    else localStorage.setItem(THEME_KEY, ev.target.value);
+    window.applyTheme();
   });
 
   const restoreFile = document.getElementById('restore-file');

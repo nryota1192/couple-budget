@@ -5,6 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>ふたり家計簿</title>
   <meta name="theme-color" content="#3b5bdb" />
+  <script>
+    // 画面が一瞬白く光らないよう、CSSより先にテーマを決める(設定は端末ごと)
+    (function () {
+      var mq = matchMedia('(prefers-color-scheme: dark)');
+      function apply() {
+        var pref = 'auto';
+        try { pref = localStorage.getItem('coupleBudget.theme') || 'auto'; } catch (e) {}
+        var dark = pref === 'dark' || (pref === 'auto' && mq.matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        document.querySelector('meta[name="theme-color"]').content = dark ? '#1d2027' : '#3b5bdb';
+      }
+      window.applyTheme = apply;
+      mq.addEventListener('change', apply);
+      apply();
+    })();
+  </script>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon-192.png" />
   <link rel="apple-touch-icon" href="icon-192.png" />
