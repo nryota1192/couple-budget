@@ -369,7 +369,7 @@ function renderHome() {
       <div class="label">今月の残り(変動費+光熱費)</div>
       <div class="big num ${t.spendableRemaining < 0 ? 'negative' : ''}">${yen(t.spendableRemaining)}</div>
       <div class="summary-sub num">
-        <div>家電積立残高<b>${yen(t.savingsBalance)}</b></div>
+        <div>積立残高<b>${yen(t.savingsBalance)}</b></div>
         <div>今月の支出<b>${yen(t.spent)}</b></div>
         <div>今月の予算<b>${yen(t.budget)}</b></div>
       </div>
